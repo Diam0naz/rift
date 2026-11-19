@@ -10,8 +10,10 @@ import {RiftMarket} from "../src/market/RiftMarket.sol";
 /// @notice Unichain Sepolia: collateral token + RiftMarket, seeded with underwriting liquidity.
 ///   forge script script/DeployMarket.s.sol:DeployMarket --rpc-url unichain_sepolia --broadcast
 contract DeployMarket is Script {
+    error FundingFailed();
+
     /// Reactive callback proxy on Unichain Sepolia (dev.reactive.network/origins-and-destinations)
-    address constant UNICHAIN_SEPOLIA_CALLBACK_PROXY = 0x775c9B990ADe401060B78D0e98684eEf8d2466C1;
+    address internal constant UNICHAIN_SEPOLIA_CALLBACK_PROXY = 0x775c9B990ADe401060B78D0e98684eEf8d2466C1;
 
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -28,7 +30,7 @@ contract DeployMarket is Script {
 
         // Callbacks are paid for by the destination contract: keep native balance in it.
         (bool ok,) = address(market).call{value: callbackFunding}("");
-        require(ok, "fund market");
+        if (!ok) revert FundingFailed();
 
         vm.stopBroadcast();
 

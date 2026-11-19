@@ -14,7 +14,7 @@ contract MockVault {
 
     IERC20 public immutable asset;
     address public immutable owner;
-    mapping(address => uint256) public balanceOf;
+    mapping(address account => uint256 balance) public balanceOf;
 
     event Deposited(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);

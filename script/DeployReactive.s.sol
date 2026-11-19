@@ -7,10 +7,10 @@ import {RiftReactive} from "../src/reactive/RiftReactive.sol";
 /// @notice Reactive Lasna: the settlement engine. Run after the Base + Unichain deployments.
 ///   forge script script/DeployReactive.s.sol:DeployReactive --rpc-url lasna --broadcast
 contract DeployReactive is Script {
-    uint256 constant BASE_SEPOLIA = 84532;
-    uint256 constant UNICHAIN_SEPOLIA = 1301;
+    uint256 internal constant BASE_SEPOLIA = 84532;
+    uint256 internal constant UNICHAIN_SEPOLIA = 1301;
     /// Cron10 (~10s) topic from dev.reactive.network/reactive-contracts. Set CRON_TOPIC=0 to disable.
-    uint256 constant CRON10 = 0x04463f7c1651e6b9774d7f85c85bb94654e3c46ca79b0c16fb16d4183307b687;
+    uint256 internal constant CRON10 = 0x04463f7c1651e6b9774d7f85c85bb94654e3c46ca79b0c16fb16d4183307b687;
 
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");

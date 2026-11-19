@@ -1,0 +1,19 @@
+{
+  "name": "solidhunter",
+  "rules": [
+    { "id": "avoid-tx-origin", "severity": "WARNING" },
+    { "id": "contract-name-camelcase", "severity": "WARNING" },
+    { "id": "custom-errors", "severity": "WARNING" },
+    { "id": "event-name-camelcase", "severity": "WARNING" },
+    { "id": "import-on-top", "severity": "WARNING" },
+    { "id": "max-line-length", "severity": "WARNING", "data": 120 },
+    { "id": "modifier-name-mixedcase", "severity": "WARNING" },
+    { "id": "named-parameters-mapping", "severity": "WARNING" },
+    { "id": "no-console", "severity": "WARNING" },
+    { "id": "no-global-import", "severity": "WARNING" },
+    { "id": "payable-fallback", "severity": "WARNING" },
+    { "id": "state-visibility", "severity": "WARNING", "data": [] },
+    { "id": "use-forbidden-name", "severity": "WARNING", "data": [] },
+    { "id": "visibility-modifier-order", "severity": "WARNING" }
+  ]
+}

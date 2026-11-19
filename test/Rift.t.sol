@@ -6,6 +6,7 @@ import {IReactive} from "@reactive/interfaces/IReactive.sol";
 import {IPayable} from "@reactive/interfaces/IPayable.sol";
 import {ISystemContract} from "@reactive/interfaces/ISystemContract.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {MockSystem} from "./mocks/MockSystem.sol";
 import {MockToken} from "../src/origin/MockToken.sol";
@@ -15,29 +16,29 @@ import {RiftMarket} from "../src/market/RiftMarket.sol";
 /// @notice End-to-end loop in one EVM:
 ///   fake origin logs -> RiftReactive.react() -> recorded callback -> replayed through a fake proxy -> RiftMarket.
 contract RiftTest is Test {
-    address constant SYSTEM = 0x8888888888888888888888888888888888888888;
-    uint256 constant BASE = 84532;
-    uint256 constant UNI = 1301;
+    address internal constant SYSTEM = 0x8888888888888888888888888888888888888888;
+    uint256 internal constant BASE = 84532;
+    uint256 internal constant UNI = 1301;
 
-    uint256 constant SYNC = uint256(keccak256("Sync(uint112,uint112)"));
-    uint256 constant TRANSFER = uint256(keccak256("Transfer(address,address,uint256)"));
+    uint256 internal constant SYNC = uint256(keccak256("Sync(uint112,uint112)"));
+    uint256 internal constant TRANSFER = uint256(keccak256("Transfer(address,address,uint256)"));
 
-    address poolBase = makeAddr("poolBase");
-    address poolUni = makeAddr("poolUni");
-    address vaultAsset = makeAddr("vaultAsset");
-    address vault = makeAddr("vault");
-    address proxy = makeAddr("callbackProxy");
+    address internal poolBase = makeAddr("poolBase");
+    address internal poolUni = makeAddr("poolUni");
+    address internal vaultAsset = makeAddr("vaultAsset");
+    address internal vault = makeAddr("vault");
+    address internal proxy = makeAddr("callbackProxy");
 
-    address underwriter = makeAddr("underwriter");
-    address buyer = makeAddr("buyer");
-    address trader = makeAddr("trader");
-    address attacker = makeAddr("attacker");
+    address internal underwriter = makeAddr("underwriter");
+    address internal buyer = makeAddr("buyer");
+    address internal trader = makeAddr("trader");
+    address internal attacker = makeAddr("attacker");
 
-    MockToken usd;
-    RiftMarket market;
-    RiftReactive rx;
+    MockToken internal usd;
+    RiftMarket internal market;
+    RiftReactive internal rx;
 
-    uint256 constant VAULT_BAL = 1_000_000e18;
+    uint256 internal constant VAULT_BAL = 1_000_000e18;
 
     function setUp() public {
         vm.warp(1_800_000_000);
@@ -127,6 +128,15 @@ contract RiftTest is Test {
         assertEq(rx.outflowBps(), 0);
     }
 
+    function test_hugeOutflowIsClampedAndFullyExpires() public {
+        // Window entries store uint192; a larger amount must not leave windowOutflow stuck after pruning.
+        _transfer(vault, attacker, uint256(1) << 200);
+        assertEq(rx.windowOutflow(), type(uint192).max);
+        vm.warp(block.timestamp + 301);
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        assertEq(rx.windowOutflow(), 0);
+    }
+
     // ---------------------------------------------------------------- full loop
 
     function test_drainTripsAndPaysProtection() public {
@@ -186,6 +196,23 @@ contract RiftTest is Test {
         assertEq(market.poolAssets(), poolBefore);
     }
 
+    function test_oversizedMarginRevertsInsteadOfTruncating() public {
+        _pushMark(0);
+        uint256 margin = uint256(type(uint128).max) + 1;
+        _fund(trader, margin);
+        vm.startPrank(trader);
+        usd.approve(address(market), type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(SafeCast.SafeCastOverflowedUintDowncast.selector, 128, margin));
+        market.openPosition(true, 1_000e18, margin);
+        vm.stopPrank();
+    }
+
+    function test_setReactiveRejectsZeroAddress() public {
+        RiftMarket fresh = new RiftMarket(IPayable(payable(proxy)), IERC20(address(usd)));
+        vm.expectRevert(RiftMarket.ZeroAddress.selector);
+        fresh.setReactive(address(0));
+    }
+
     function test_unauthorizedCallbackReverts() public {
         vm.prank(proxy);
         vm.expectRevert(abi.encodeWithSelector(RiftMarket.UnauthorizedReactive.selector, attacker));
@@ -239,7 +266,7 @@ contract RiftTest is Test {
         return MockSystem(payable(SYSTEM)).callbacksCount();
     }
 
-    uint256 delivered;
+    uint256 internal delivered;
 
     /// @dev Replays every pending callback the way the proxy would: first 20 bytes of the address arg = sender.
     function _deliverAll() internal {

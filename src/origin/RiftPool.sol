@@ -26,6 +26,7 @@ contract RiftPool {
     error ZeroAmount();
     error Slippage(uint256 amountOut, uint256 minOut);
     error NoLiquidity();
+    error ReserveOverflow();
 
     constructor(IERC20 token0_, IERC20 token1_) {
         token0 = token0_;
@@ -43,7 +44,10 @@ contract RiftPool {
 
     /// @notice Swap an exact input amount.
     /// @param zeroForOne_ true to sell token0 for token1.
-    function swap(bool zeroForOne_, uint256 amountIn_, uint256 minOut_, address to_) external returns (uint256 amountOut) {
+    function swap(bool zeroForOne_, uint256 amountIn_, uint256 minOut_, address to_)
+        external
+        returns (uint256 amountOut)
+    {
         if (amountIn_ == 0) revert ZeroAmount();
         amountOut = getAmountOut(zeroForOne_, amountIn_);
         if (amountOut < minOut_) revert Slippage(amountOut, minOut_);
@@ -57,7 +61,8 @@ contract RiftPool {
     }
 
     function getAmountOut(bool zeroForOne_, uint256 amountIn_) public view returns (uint256) {
-        (uint256 rIn, uint256 rOut) = zeroForOne_ ? (uint256(reserve0), uint256(reserve1)) : (uint256(reserve1), uint256(reserve0));
+        (uint256 rIn, uint256 rOut) =
+            zeroForOne_ ? (uint256(reserve0), uint256(reserve1)) : (uint256(reserve1), uint256(reserve0));
         if (rIn == 0 || rOut == 0) revert NoLiquidity();
         uint256 inWithFee = amountIn_ * (10_000 - FEE_BPS);
         return (inWithFee * rOut) / (rIn * 10_000 + inWithFee);
@@ -69,8 +74,11 @@ contract RiftPool {
     }
 
     function _sync() internal {
-        reserve0 = uint112(token0.balanceOf(address(this)));
-        reserve1 = uint112(token1.balanceOf(address(this)));
+        uint256 bal0 = token0.balanceOf(address(this));
+        uint256 bal1 = token1.balanceOf(address(this));
+        if (bal0 > type(uint112).max || bal1 > type(uint112).max) revert ReserveOverflow();
+        reserve0 = uint112(bal0);
+        reserve1 = uint112(bal1);
         emit Sync(reserve0, reserve1);
     }
 }

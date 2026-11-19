@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {AbstractPayer} from "@reactive/base/AbstractPayer.sol";
 import {IPayable} from "@reactive/interfaces/IPayable.sol";
 
@@ -60,7 +61,7 @@ contract RiftMarket is AbstractPayer {
     // Underwriting pool
     uint256 public poolAssets;
     uint256 public totalShares;
-    mapping(address => uint256) public sharesOf;
+    mapping(address user => uint256 shares) public sharesOf;
 
     // Mark + funding
     int256 public markBps;
@@ -71,7 +72,7 @@ contract RiftMarket is AbstractPayer {
 
     // Products
     Policy[] internal _policies;
-    mapping(address => Position) public positions;
+    mapping(address trader => Position position) public positions;
     uint256 public totalMargin;
     uint256 public openLongSize;
     uint256 public openShortSize;
@@ -86,12 +87,25 @@ contract RiftMarket is AbstractPayer {
     // ---------------------------------------------------------------- events
 
     event ReactiveSet(address reactive);
+    event PremiumUpdated(uint256 premiumBpsPerDay);
     event Deposited(address indexed user, uint256 assets, uint256 shares);
     event Withdrawn(address indexed user, uint256 assets, uint256 shares);
-    event MarkUpdated(int256 markBps, uint256 observedAt, uint256 receivedAt, uint256 originChainId, uint256 originTxHash);
-    event ProtectionBought(uint256 indexed id, address indexed buyer, uint256 notional, uint256 premium, uint256 expiry);
+    event MarkUpdated(
+        int256 markBps, uint256 observedAt, uint256 receivedAt, uint256 originChainId, uint256 originTxHash
+    );
+    event ProtectionBought(
+        uint256 indexed id, address indexed buyer, uint256 notional, uint256 premium, uint256 expiry
+    );
     event PolicyPaid(uint256 indexed id, address indexed buyer, uint256 amount);
-    event Tripped(int256 markBps, uint256 outflowBps, uint256 observedAt, uint256 receivedAt, uint256 originChainId, uint256 originTxHash, uint256 payoutRatioBps);
+    event Tripped(
+        int256 markBps,
+        uint256 outflowBps,
+        uint256 observedAt,
+        uint256 receivedAt,
+        uint256 originChainId,
+        uint256 originTxHash,
+        uint256 payoutRatioBps
+    );
     event PositionOpened(address indexed trader, bool isLong, uint256 size, uint256 margin, int256 entryMark);
     event PositionClosed(address indexed trader, int256 pnl, int256 funding, uint256 payout, bool liquidated);
 
@@ -99,6 +113,7 @@ contract RiftMarket is AbstractPayer {
 
     error NotOwner();
     error ReactiveAlreadySet();
+    error ZeroAddress();
     error UnauthorizedReactive(address sender);
     error IsTripped();
     error NotTripped();
@@ -141,6 +156,7 @@ contract RiftMarket is AbstractPayer {
 
     /// @notice One-time link to the reactive contract (it is deployed after this market).
     function setReactive(address reactive_) external onlyOwner {
+        if (reactive_ == address(0)) revert ZeroAddress();
         if (reactive != address(0)) revert ReactiveAlreadySet();
         reactive = reactive_;
         emit ReactiveSet(reactive_);
@@ -148,6 +164,7 @@ contract RiftMarket is AbstractPayer {
 
     function setPremiumBpsPerDay(uint256 bps_) external onlyOwner {
         premiumBpsPerDay = bps_;
+        emit PremiumUpdated(bps_);
     }
 
     /// @notice Pay outstanding callback debt to the proxy from this contract's native balance.
@@ -169,10 +186,13 @@ contract RiftMarket is AbstractPayer {
 
     // ================================================================ reactive callbacks
 
-    function updateMark(address sender_, int256 markBps_, uint256 observedAt_, uint256 originChainId_, uint256 originTxHash_)
-        external
-        onlyReactive(sender_)
-    {
+    function updateMark(
+        address sender_,
+        int256 markBps_,
+        uint256 observedAt_,
+        uint256 originChainId_,
+        uint256 originTxHash_
+    ) external onlyReactive(sender_) {
         if (tripped) return; // late marks after a trip are ignored
         _accrueFunding();
         markBps = markBps_;
@@ -256,8 +276,8 @@ contract RiftMarket is AbstractPayer {
 
         Policy memory p = Policy({
             buyer: msg.sender,
-            notional: uint128(notional_),
-            expiry: uint64(block.timestamp + duration_),
+            notional: SafeCast.toUint128(notional_),
+            expiry: SafeCast.toUint64(block.timestamp + duration_),
             settled: false
         });
         id = _storePolicy(p);
@@ -286,8 +306,8 @@ contract RiftMarket is AbstractPayer {
         positions[msg.sender] = Position({
             open: true,
             isLong: isLong_,
-            size: uint128(size_),
-            margin: uint128(margin_),
+            size: SafeCast.toUint128(size_),
+            margin: SafeCast.toUint128(margin_),
             entryMark: markBps,
             entryCumFunding: cumFunding
         });
@@ -348,7 +368,8 @@ contract RiftMarket is AbstractPayer {
         return _policies[id_];
     }
 
-    /// @notice Callback latency of the last mark, in Unichain seconds minus Reactive seconds (clocks can skew slightly).
+    /// @notice Callback latency of the last mark, in Unichain seconds minus Reactive seconds.
+    /// @dev The two clocks can skew slightly, so this can be off by a second or so.
     function lastMarkLatency() external view returns (int256) {
         return int256(markReceivedAt) - int256(markObservedAt);
     }

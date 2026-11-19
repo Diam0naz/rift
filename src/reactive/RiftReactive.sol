@@ -91,10 +91,12 @@ contract RiftReactive is AbstractReactive {
 
     event PriceMirrored(uint256 indexed chainId, uint256 price, uint256 originBlock);
     event VaultFlow(bool outflow, uint256 amount, uint256 vaultBalance, uint256 windowOutflow);
-    event BreachStarted(int256 spreadBps, uint256 at);
-    event BreachCleared(uint256 at);
+    event BreachStarted(int256 spreadBps, uint256 timestamp);
+    event BreachCleared(uint256 timestamp);
     event MarkSent(int256 spreadBps, uint256 observedAt, uint256 originChainId, uint256 originTxHash);
-    event TripSent(int256 spreadBps, uint256 outflowBps, uint256 observedAt, uint256 originChainId, uint256 originTxHash);
+    event TripSent(
+        int256 spreadBps, uint256 outflowBps, uint256 observedAt, uint256 originChainId, uint256 originTxHash
+    );
     event ParamsUpdated(Params params);
 
     error NotOwner();
@@ -118,14 +120,16 @@ contract RiftReactive is AbstractReactive {
         vaultBalance = cfg_.initialVaultBalance;
         _setParams(params_);
 
+        uint256 baseId = cfg_.baseChainId;
+
         // Twin pools.
-        SYSTEM.subscribe(cfg_.baseChainId, cfg_.poolBase, SYNC_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        SYSTEM.subscribe(baseId, cfg_.poolBase, SYNC_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
         SYSTEM.subscribe(cfg_.uniChainId, cfg_.poolUni, SYNC_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
 
         // Vault asset flows: out of the vault (topic1 = from) and into the vault (topic2 = to).
         uint256 vaultTopic = uint256(uint160(cfg_.vault));
-        SYSTEM.subscribe(cfg_.baseChainId, cfg_.vaultAsset, TRANSFER_TOPIC, vaultTopic, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        SYSTEM.subscribe(cfg_.baseChainId, cfg_.vaultAsset, TRANSFER_TOPIC, REACTIVE_IGNORE, vaultTopic, REACTIVE_IGNORE);
+        SYSTEM.subscribe(baseId, cfg_.vaultAsset, TRANSFER_TOPIC, vaultTopic, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        SYSTEM.subscribe(baseId, cfg_.vaultAsset, TRANSFER_TOPIC, REACTIVE_IGNORE, vaultTopic, REACTIVE_IGNORE);
 
         // Optional clock so sustained-breach and window expiry resolve without new swaps.
         if (cfg_.cronTopic != 0) {
@@ -209,6 +213,8 @@ contract RiftReactive is AbstractReactive {
         address to = address(uint160(log_.topic2));
         uint256 amount = abi.decode(log_.data, (uint256));
         if (from == to) return;
+        // Outflow entries store uint192; clamp so windowOutflow and the window entries always agree.
+        if (amount > type(uint192).max) amount = type(uint192).max;
 
         if (from == vault) {
             vaultBalance = amount > vaultBalance ? 0 : vaultBalance - amount;
@@ -290,10 +296,7 @@ contract RiftReactive is AbstractReactive {
     function _callback(bytes memory payload_, uint64 gas_) internal {
         SYSTEM.requestCallbackV_1_0(
             ISystemContract.CallbackConfiguration_V_1_0({
-                chainId: uniChainId,
-                recipient: market,
-                gasLimit: gas_,
-                payload: payload_
+                chainId: uniChainId, recipient: market, gasLimit: gas_, payload: payload_
             })
         );
     }
