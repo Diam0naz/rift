@@ -87,30 +87,48 @@ forge script script/DeployMarket.s.sol:LinkReactive --rpc-url unichain_sepolia -
 ## Demo loops
 
 ```bash
+source .env
+# 0. Prime: RiftReactive only learns prices from Sync events emitted after it subscribed.
+#    A price-neutral addLiquidity on Unichain gives it the Unichain price.
+cast send $POOL_UNI "addLiquidity(uint256,uint256)" 1e18 2e18 --rpc-url unichain_sepolia --private-key $PRIVATE_KEY
+
 # Loop 1: swap on Base -> reactive tx on Lasna -> updateMark on Unichain
-forge script script/Demo.s.sol:DemoSetup   --rpc-url unichain_sepolia --broadcast   # buy protection + open perp
 forge script script/Demo.s.sol:DemoSwap    --rpc-url base_sepolia --broadcast
+# Needs a mark on the market (from loop 1) before it can open the perp.
+forge script script/Demo.s.sol:DemoSetup   --rpc-url unichain_sepolia --broadcast   # buy protection + open perp
 
 # Loop 2: vault drained on Base -> reactive tx -> trip on Unichain (policies paid in the same tx)
 forge script script/Demo.s.sol:DemoExploit --rpc-url base_sepolia --broadcast
+# The breach must hold for SUSTAIN_SECONDS (2s) on Reactive's clock, and it is only re-checked on a new event.
+# With cron off (the default), send any later Base event (within WINDOW_SECONDS) to trip:
+SWAP_IN=1000000000000000000 forge script script/Demo.s.sol:DemoSwap --rpc-url base_sepolia --broadcast
 ```
 
 ## Deployed addresses & transaction hashes
 
-_To be filled in after deployment._
+Deployed 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`. The two pools share an address because the deployer used the same nonces on both chains.
 
 | | Address |
 |---|---|
-| RiftPool (Base) | |
-| MockVault (Base) | |
-| RiftPool (Unichain) | |
-| RiftMarket (Unichain) | |
-| RiftReactive (Lasna) | |
+| RiftPool (Base Sepolia) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://sepolia.basescan.org/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
+| MockVault (Base Sepolia) | [`0x3dE37BbE25Df1CF63b2fB9093A8DDdAd69dDABC5`](https://sepolia.basescan.org/address/0x3dE37BbE25Df1CF63b2fB9093A8DDdAd69dDABC5) |
+| Vault asset / tQUOTE (Base Sepolia) | [`0x7C8b13329EDcbFbD8405833F198024ca7E3b4276`](https://sepolia.basescan.org/address/0x7C8b13329EDcbFbD8405833F198024ca7E3b4276) |
+| RiftPool (Unichain Sepolia) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://sepolia.uniscan.xyz/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
+| RiftMarket (Unichain Sepolia) | [`0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5`](https://sepolia.uniscan.xyz/address/0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5) |
+| Market collateral / tUSD (Unichain Sepolia) | [`0x459deD748c12aF276B1D73892b921f96A6290C93`](https://sepolia.uniscan.xyz/address/0x459deD748c12aF276B1D73892b921f96A6290C93) |
+| RiftReactive (Lasna) | [`0x7C8b13329EDcbFbD8405833F198024ca7E3b4276`](https://lasna.reactscan.net/address/0x7C8b13329EDcbFbD8405833F198024ca7E3b4276) |
 
 | Loop | Origin tx | Reactive tx | Callback tx | Latency |
 |---|---|---|---|---|
-| updateMark | | | | |
-| trip | | | | |
+| updateMark | [`0x3514e617…`](https://sepolia.basescan.org/tx/0x3514e61751d55e70b2e736ad5abf8afa51de4a2b67565907776bcfb47cea7fcd) | [`0x856a34ab…`](https://lasna.reactscan.net/tx/0x856a34ab462d63f8aed11bcade9b9f2c219faec9f08c5a9435c332980d9715cd) | [`0xfd8f961b…`](https://sepolia.uniscan.xyz/tx/0xfd8f961b68165388b26b42613f785415bf360ab7b732e86913f94e21301917c9) | ~2 s |
+| trip | [`0x24f36c19…`](https://sepolia.basescan.org/tx/0x24f36c19bf2593744b35c6e4c8e9d2d5e8c814a2c479e2e34ecc665a14b891fd) | [`0x32d61ca9…`](https://lasna.reactscan.net/tx/0x32d61ca9e07c490c6aa6b462fb63806f2cf6a30d1c530282d3f02a306aedb28c) | [`0x892cea84…`](https://sepolia.uniscan.xyz/tx/0x892cea840926429f4a003b9ac69709433824f7c1e8d8be5103df5afad8de769b) | ~3 s |
+
+Latency is the Unichain callback block's timestamp minus the Base origin block's timestamp. Clocks on the three chains differ by about a second.
+
+What the run showed (2026-11-20):
+
+- **updateMark:** a 20 tBASE swap on Base moved the spread to +403 bps, and the market's mark updated to +403 about 2 s later.
+- **trip:** [`DemoExploit`](https://sepolia.basescan.org/tx/0xe1f1b9bd672729ab8d39dfd1a86cb4d8db0a6fa92b7abd982e278a7e33545122) drained 30% of the vault and dumped the loot into the Base pool, pushing the spread to −7,446 bps. RiftReactive recorded the breach but didn't trip until the follow-up swap arrived, after the 2 s sustain period. The trip callback paid policy 0 its full 10,000 tUSD notional (payout ratio 100%) in the same transaction and froze the perp at −7,436 bps.
 
 ## Tests
 

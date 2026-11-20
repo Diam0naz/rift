@@ -5,3 +5,4 @@ broadcast/**/dry-run/
 .env
 node_modules/
 .DS_Store
+broadcast/**/*.lock

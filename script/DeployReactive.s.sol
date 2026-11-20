@@ -9,8 +9,10 @@ import {RiftReactive} from "../src/reactive/RiftReactive.sol";
 contract DeployReactive is Script {
     uint256 internal constant BASE_SEPOLIA = 84532;
     uint256 internal constant UNICHAIN_SEPOLIA = 1301;
-    /// Cron10 (~10s) topic from dev.reactive.network/reactive-contracts. Set CRON_TOPIC=0 to disable.
-    uint256 internal constant CRON10 = 0x04463f7c1651e6b9774d7f85c85bb94654e3c46ca79b0c16fb16d4183307b687;
+    /// Cron topics from dev.reactive.network/reactive-contracts. Off by default: every tick is billed, and
+    /// Cron10 (~10s) costs ~100 lREACT/day. Swaps and vault transfers already drive marks and trips.
+    /// Opt in with CRON_TOPIC=<topic>, e.g. Cron1000 (~17 min, ~1 lREACT/day):
+    /// 0xe20b31294d84c3661ddc8f423abb9c70310d0cf172aa2714ead78029b325e3f4
 
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -25,7 +27,7 @@ contract DeployReactive is Script {
             vault: vm.envAddress("VAULT"),
             market: vm.envAddress("MARKET"),
             initialVaultBalance: vm.envUint("VAULT_BAL"),
-            cronTopic: vm.envOr("CRON_TOPIC", CRON10)
+            cronTopic: vm.envOr("CRON_TOPIC", uint256(0))
         });
 
         RiftReactive.Params memory p = RiftReactive.Params({
