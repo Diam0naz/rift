@@ -1,3 +1,7 @@
 {
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "solidity.compileUsingRemoteVersion": "v0.8.30+commit.73712a01",
+    "solidity.defaultCompiler": "remote",
+    "solidity.packageDefaultDependenciesDirectory": "lib",
+    "solidity.packageDefaultDependenciesContractsDirectory": "src"
 }

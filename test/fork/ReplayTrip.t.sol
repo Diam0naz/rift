@@ -4,23 +4,16 @@ pragma solidity ^0.8.29;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @dev The views this test reads; they exist on both the deployed (pre-safeguard) market and the current one.
-interface IRiftMarketView {
-    function tripped() external view returns (bool);
-    function tripMark() external view returns (int256);
-    function payoutRatioBps() external view returns (uint256);
-    function reactive() external view returns (address);
-    function collateral() external view returns (IERC20);
-}
+import {RiftMarket} from "../../src/market/RiftMarket.sol";
 
 /// @notice Replays the recorded testnet trip (README, "Deployed addresses & transaction hashes") on a fork of
-///         Unichain Sepolia: state just before the callback, then the exact callback transaction.
-///         Needs UNICHAIN_SEPOLIA_RPC; skipped without it.
+///         Unichain Sepolia: state just before the callback, then the exact callback transaction the Reactive
+///         proxy delivered, then a claim. Needs UNICHAIN_SEPOLIA_RPC; skipped without it.
 contract ReplayTripForkTest is Test {
-    IRiftMarketView internal constant MARKET = IRiftMarketView(0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5);
-    address internal constant REACTIVE = 0x7C8b13329EDcbFbD8405833F198024ca7E3b4276;
+    RiftMarket internal constant MARKET = RiftMarket(payable(0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0));
+    address internal constant REACTIVE = 0xAD0983eBF145C8f8184bf219E795aC63fEE58B78;
     address internal constant BUYER = 0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D;
-    bytes32 internal constant TRIP_CALLBACK_TX = 0x892cea840926429f4a003b9ac69709433824f7c1e8d8be5103df5afad8de769b;
+    bytes32 internal constant TRIP_CALLBACK_TX = 0x12babcb0e4c12e8d297f0ba01dca2659c261780779281c1b24c11accaec5a9c4;
 
     function test_replayRecordedTripCallback() public {
         string memory rpc = vm.envOr("UNICHAIN_SEPOLIA_RPC", string(""));
@@ -32,14 +25,19 @@ contract ReplayTripForkTest is Test {
 
         assertEq(MARKET.reactive(), REACTIVE, "market linked to the deployed RiftReactive");
         assertFalse(MARKET.tripped(), "not tripped before the callback");
-        IERC20 usd = MARKET.collateral();
-        uint256 before = usd.balanceOf(BUYER);
+        assertEq(MARKET.policy(0).owed, 0);
 
         vm.transact(TRIP_CALLBACK_TX); // the exact callback the Reactive proxy delivered
 
         assertTrue(MARKET.tripped());
         assertEq(MARKET.tripMark(), -7436);
         assertEq(MARKET.payoutRatioBps(), 10_000);
-        assertEq(usd.balanceOf(BUYER) - before, 10_000e18, "policy 0 paid in full by the callback");
+        assertEq(MARKET.policy(0).owed, 10_000e18, "covered policy settled by the callback, no transfer in it");
+
+        IERC20 usd = MARKET.collateral();
+        uint256 before = usd.balanceOf(BUYER);
+        MARKET.claim(0); // anyone can push the claim; funds go to the buyer
+        assertEq(usd.balanceOf(BUYER) - before, 10_000e18, "policy 0 paid in full on claim");
+        assertEq(MARKET.totalOwed(), 0);
     }
 }

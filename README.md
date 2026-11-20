@@ -151,29 +151,36 @@ cast send $MARKET "claim(uint256)" 0 --rpc-url unichain_sepolia --private-key $P
 
 ## Deployed addresses & transaction hashes
 
-Deployed 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`. The two pools share an address because the deployer used the same nonces on both chains.
+Current deployment: 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`, with every safeguard above (cover waiting period, claim-based payouts, trip confirmation, time-weighted mark, liveness guard, utilization pricing, delayed withdrawals). RiftReactive runs the Cron1000 heartbeat.
 
 | | Address |
 |---|---|
-| RiftPool (Base Sepolia) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://sepolia.basescan.org/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
-| MockVault (Base Sepolia) | [`0x3dE37BbE25Df1CF63b2fB9093A8DDdAd69dDABC5`](https://sepolia.basescan.org/address/0x3dE37BbE25Df1CF63b2fB9093A8DDdAd69dDABC5) |
-| Vault asset / tQUOTE (Base Sepolia) | [`0x7C8b13329EDcbFbD8405833F198024ca7E3b4276`](https://sepolia.basescan.org/address/0x7C8b13329EDcbFbD8405833F198024ca7E3b4276) |
-| RiftPool (Unichain Sepolia) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://sepolia.uniscan.xyz/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
-| RiftMarket (Unichain Sepolia) | [`0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5`](https://sepolia.uniscan.xyz/address/0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5) |
-| Market collateral / tUSD (Unichain Sepolia) | [`0x459deD748c12aF276B1D73892b921f96A6290C93`](https://sepolia.uniscan.xyz/address/0x459deD748c12aF276B1D73892b921f96A6290C93) |
-| RiftReactive (Lasna) | [`0x7C8b13329EDcbFbD8405833F198024ca7E3b4276`](https://lasna.reactscan.net/address/0x7C8b13329EDcbFbD8405833F198024ca7E3b4276) |
+| RiftPool (Base Sepolia) | [`0xA5aB34c37F2d8C8f86a32BA007F6e421D0B5315D`](https://sepolia.basescan.org/address/0xA5aB34c37F2d8C8f86a32BA007F6e421D0B5315D) |
+| MockVault (Base Sepolia) | [`0xCC83d90035bea5b69d3358479F046781146353e3`](https://sepolia.basescan.org/address/0xCC83d90035bea5b69d3358479F046781146353e3) |
+| Vault asset / tQUOTE (Base Sepolia) | [`0x540bd620182C67b3A83375259EA11a1037DC7F58`](https://sepolia.basescan.org/address/0x540bd620182C67b3A83375259EA11a1037DC7F58) |
+| RiftPool (Unichain Sepolia) | [`0x3bE5C66453dB2b55412Bf96b4F2df46F34e239ce`](https://sepolia.uniscan.xyz/address/0x3bE5C66453dB2b55412Bf96b4F2df46F34e239ce) |
+| RiftMarket (Unichain Sepolia) | [`0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0`](https://sepolia.uniscan.xyz/address/0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0) |
+| Market collateral / tUSD (Unichain Sepolia) | [`0x7595790414E2C73ADAF3fcC70d8F07055fDDBeAA`](https://sepolia.uniscan.xyz/address/0x7595790414E2C73ADAF3fcC70d8F07055fDDBeAA) |
+| RiftReactive (Lasna) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://lasna.reactscan.net/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
 
 | Loop | Origin tx | Reactive tx | Callback tx | Latency |
 |---|---|---|---|---|
-| updateMark | [`0x3514e617…`](https://sepolia.basescan.org/tx/0x3514e61751d55e70b2e736ad5abf8afa51de4a2b67565907776bcfb47cea7fcd) | [`0x856a34ab…`](https://lasna.reactscan.net/tx/0x856a34ab462d63f8aed11bcade9b9f2c219faec9f08c5a9435c332980d9715cd) | [`0xfd8f961b…`](https://sepolia.uniscan.xyz/tx/0xfd8f961b68165388b26b42613f785415bf360ab7b732e86913f94e21301917c9) | ~2 s |
-| trip | [`0x24f36c19…`](https://sepolia.basescan.org/tx/0x24f36c19bf2593744b35c6e4c8e9d2d5e8c814a2c479e2e34ecc665a14b891fd) | [`0x32d61ca9…`](https://lasna.reactscan.net/tx/0x32d61ca9e07c490c6aa6b462fb63806f2cf6a30d1c530282d3f02a306aedb28c) | [`0x892cea84…`](https://sepolia.uniscan.xyz/tx/0x892cea840926429f4a003b9ac69709433824f7c1e8d8be5103df5afad8de769b) | ~3 s |
+| updateMark | [`0xc2b7e42a…`](https://sepolia.basescan.org/tx/0xc2b7e42a455f552976787d6db6f694bbdede8344b2d15101161b166954686211) | [`0xb98be7f1…`](https://lasna.reactscan.net/tx/0xb98be7f1893c3098ea95dc76384f7ce8d776e1dc11848a604e0f865bca68ecea) | [`0x60f12571…`](https://sepolia.uniscan.xyz/tx/0x60f12571f05d83fa4831517c27fecb121e38ecb6c4c976c2dc0b96402aff77ea) | ~3 s |
+| trip | [`0x443b4c59…`](https://sepolia.basescan.org/tx/0x443b4c59ce762b180c7828dc5fc77011d61c07cb4b20202bf597006c32f2dcf6) | [`0xe46d223e…`](https://lasna.reactscan.net/tx/0xe46d223e4e394afa5f28797659bb2db8f2d6c42f0ea1b5c41289cb572b8316ed) | [`0x12babcb0…`](https://sepolia.uniscan.xyz/tx/0x12babcb0e4c12e8d297f0ba01dca2659c261780779281c1b24c11accaec5a9c4) | ~2 s |
 
 Latency is the Unichain callback block's timestamp minus the Base origin block's timestamp. Clocks on the three chains differ by about a second.
 
-What the run showed (2026-11-20). This run used the contracts deployed above, which predate the settlement safeguards: payouts went out inside the trip callback, with no waiting period or claim step.
+What the run showed (2026-11-20):
 
-- **updateMark:** a 20 tBASE swap on Base moved the spread to +403 bps, and the market's mark updated to +403 about 2 s later.
-- **trip:** [`DemoExploit`](https://sepolia.basescan.org/tx/0xe1f1b9bd672729ab8d39dfd1a86cb4d8db0a6fa92b7abd982e278a7e33545122) drained 30% of the vault and dumped the loot into the Base pool, pushing the spread to −7,446 bps. RiftReactive recorded the breach but didn't trip until the follow-up swap arrived, after the 2 s sustain period. The trip callback paid policy 0 its full 10,000 tUSD notional (payout ratio 100%) in the same transaction and froze the perp at −7,436 bps.
+- **updateMark:** a 20 tBASE swap on Base moved the spread to +403 bps, and the market's mark updated to +403 about 3 s later.
+- **Cover priced under stress:** policy 0 (10,000 tUSD, 1 day) cost 19.19 tUSD: the 10.63 utilization price times a 1.81x stress multiplier, because the spread was already at +403 bps.
+- **trip:** after the 10-minute cover waiting period, [`DemoExploit`](https://sepolia.basescan.org/tx/0xeee9710ad6f0281a559fd02c266f013522169c22d32f687e79a71473dd158bba) drained 30% of the vault and dumped the loot into the Base pool, pushing the spread to −7,446 bps. RiftReactive recorded the breach, and the follow-up swap tripped it after the 2 s sustain period. The trip callback settled policy 0 at its full 10,000 tUSD (payout ratio 100%) with no transfers inside the callback, and froze the perp at −7,436 bps.
+- **Confirmation:** RiftReactive saw the market's `Tripped` event and set `tripConfirmed`. It sent the trip once, with no retries needed.
+- **Claim:** [`claim(0)`](https://sepolia.uniscan.xyz/tx/0xe2190ea1ed408063a07b6b94e2cda6ec4e58ffcca9d02e4a2d109575ce545b41) paid the buyer 10,000 tUSD.
+
+The fork test in `test/fork/` replays this trip callback and the claim against Unichain Sepolia state.
+
+An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5`, RiftReactive `0x7C8b13329EDcbFbD8405833F198024ca7E3b4276`) but no longer used.
 
 ## Tests and verification
 
