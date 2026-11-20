@@ -236,6 +236,180 @@ contract RiftTest is Test {
         assertEq(market.maxMarkAge(), 30 minutes);
     }
 
+    // ---------------------------------------------------------------- underwriting accounting
+
+    function _openLong(int256 entryMark, uint256 size, uint256 margin) internal {
+        _pushMark(entryMark);
+        vm.startPrank(trader);
+        usd.approve(address(market), type(uint256).max);
+        market.openPosition(true, size, margin);
+        vm.stopPrank();
+    }
+
+    function _withdrawAll(address who) internal returns (uint256 received) {
+        uint256 before = usd.balanceOf(who);
+        uint256 shares = market.sharesOf(who);
+        vm.prank(who);
+        market.requestWithdraw(shares);
+        vm.warp(block.timestamp + market.WITHDRAW_DELAY());
+        vm.prank(who);
+        market.completeWithdraw();
+        received = usd.balanceOf(who) - before;
+    }
+
+    function test_poolValueIncludesUnrealizedPerpPnl() public {
+        _openLong(0, 10_000e18, 1_000e18);
+        assertEq(market.poolValue(), 100_000e18);
+        _pushMark(1_000); // long up 10% of size: the pool owes the trader 1,000
+        assertEq(market.tradersUnrealizedPnl(), 1_000e18);
+        assertEq(market.poolValue(), 99_000e18);
+        _pushMark(-1_000); // long down 1,000: the pool is owed it
+        assertEq(market.poolValue(), 101_000e18);
+    }
+
+    function test_newcomerCannotBuyIntoUnrealizedGains() public {
+        _openLong(0, 10_000e18, 1_000e18);
+        _pushMark(-1_000); // trader losing 1,000 to the pool, not yet realized
+
+        address newcomer = makeAddr("newcomer");
+        _fund(newcomer, 10_000e18);
+        vm.prank(newcomer);
+        market.deposit(10_000e18);
+
+        vm.prank(trader);
+        market.closePosition(); // the pool realizes the 1,000
+
+        _pushMark(0); // keep the mark fresh; no positions left, so funding is irrelevant
+        uint256 back = _withdrawAll(newcomer);
+        assertLe(back, 10_000e18, "no share of gains that predate the deposit");
+        assertApproxEqAbs(back, 10_000e18, 1e6, "but nothing lost either");
+    }
+
+    function test_withdrawerBearsUnrealizedPerpLoss() public {
+        address u2 = makeAddr("u2");
+        _fund(u2, 100_000e18);
+        vm.prank(u2);
+        market.deposit(100_000e18);
+
+        _openLong(0, 10_000e18, 1_000e18);
+        _pushMark(1_000); // the pool owes the trader 1,000
+
+        uint256 u2Shares = market.sharesOf(u2);
+        vm.prank(u2);
+        market.requestWithdraw(u2Shares);
+        vm.warp(block.timestamp + market.WITHDRAW_DELAY());
+        _pushMark(1_000);
+        uint256 expected = (100_000e18 * market.poolValue()) / market.totalShares();
+        uint256 before = usd.balanceOf(u2);
+        vm.prank(u2);
+        market.completeWithdraw();
+        uint256 back = usd.balanceOf(u2) - before;
+        assertEq(back, expected, "priced at pool value at completion");
+        assertLt(back, 100_000e18, "takes its half of the open loss");
+    }
+
+    function test_withdrawalWaitsAndCanBeCancelled() public {
+        uint256 shares = market.sharesOf(underwriter);
+        vm.startPrank(underwriter);
+        market.requestWithdraw(shares / 2);
+        assertEq(market.sharesOf(underwriter), shares - shares / 2);
+        assertEq(market.totalShares(), shares, "locked shares stay in the pool");
+
+        uint256 unlockAt = block.timestamp + market.WITHDRAW_DELAY();
+        vm.expectRevert(abi.encodeWithSelector(RiftMarket.WithdrawLocked.selector, unlockAt));
+        market.completeWithdraw();
+
+        vm.expectRevert(RiftMarket.WithdrawPending.selector);
+        market.requestWithdraw(1);
+
+        market.cancelWithdraw();
+        assertEq(market.sharesOf(underwriter), shares);
+        vm.expectRevert(RiftMarket.NoWithdrawRequest.selector);
+        market.completeWithdraw();
+        vm.stopPrank();
+    }
+
+    function test_lockedSharesStillPayForATripDuringTheDelay() public {
+        _pushMark(0);
+        vm.prank(buyer);
+        uint256 id = market.buyProtection(10_000e18, 1 days);
+        uint256 premium = market.policy(id).premium;
+        vm.warp(block.timestamp + market.coverDelay());
+
+        // The underwriter sees the drain on Base and asks to leave...
+        uint256 shares = market.sharesOf(underwriter);
+        vm.prank(underwriter);
+        market.requestWithdraw(shares);
+        // ...but the trip lands inside the delay.
+        _forceTrip();
+
+        vm.warp(block.timestamp + market.WITHDRAW_DELAY());
+        vm.prank(underwriter);
+        market.completeWithdraw();
+        assertEq(usd.balanceOf(underwriter), 100_000e18 + premium - 10_000e18, "paid the claim like everyone");
+    }
+
+    function test_liquidatorIsPaidFromLeftoverMargin() public {
+        _openLong(0, 10_000e18, 1_000e18);
+        _pushMark(-960); // equity 40 < maintenance 500
+        uint256 poolBefore = market.poolAssets();
+
+        vm.expectEmit(address(market));
+        emit RiftMarket.Liquidated(trader, attacker, 40e18);
+        vm.prank(attacker);
+        market.liquidate(trader);
+        assertEq(usd.balanceOf(attacker), 40e18, "reward = leftover equity, under the 1% cap");
+        assertEq(market.poolAssets(), poolBefore + 960e18, "pool keeps the rest of the margin");
+    }
+
+    function test_liquidationRewardIsCapped() public {
+        _openLong(0, 10_000e18, 1_000e18);
+        _pushMark(-800); // equity 200: liquidatable, leftover above the cap
+        uint256 poolBefore = market.poolAssets();
+        vm.prank(attacker);
+        market.liquidate(trader);
+        assertEq(usd.balanceOf(attacker), 100e18, "1% of size");
+        assertEq(market.poolAssets(), poolBefore + 900e18);
+    }
+
+    function test_policyIdsAreNeverReused() public {
+        _pushMark(0);
+        vm.prank(buyer);
+        uint256 first = market.buyProtection(1_000e18, 1 hours);
+        vm.warp(block.timestamp + 2 hours);
+        _pushMark(0);
+
+        address other = makeAddr("other");
+        _fund(other, 1_000e18);
+        vm.prank(other);
+        uint256 second = market.buyProtection(1_000e18, 1 days);
+
+        assertEq(second, first + 1);
+        assertEq(market.policy(first).buyer, buyer, "old id still points at the old policy");
+        assertEq(market.policy(second).buyer, other);
+        uint256[] memory ids = market.activePolicyIds();
+        assertEq(ids.length, 1, "expired policy pruned from the active list");
+        assertEq(ids[0], second);
+    }
+
+    function test_activePolicyCapFreesUpAsPoliciesExpire() public {
+        _pushMark(0);
+        _fund(buyer, 1_000_000e18);
+        vm.startPrank(buyer);
+        for (uint256 i; i < market.MAX_POLICIES(); ++i) {
+            market.buyProtection(100e18, 1 hours);
+        }
+        vm.expectRevert(RiftMarket.TooManyPolicies.selector);
+        market.buyProtection(100e18, 1 hours);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 2 hours);
+        _pushMark(0);
+        vm.prank(buyer);
+        uint256 id = market.buyProtection(100e18, 1 hours);
+        assertEq(id, market.MAX_POLICIES(), "next fresh id, not a recycled slot");
+    }
+
     // ---------------------------------------------------------------- full loop
 
     function test_drainTripsAndPaysProtection() public {

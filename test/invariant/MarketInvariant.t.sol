@@ -47,13 +47,23 @@ contract MarketHandler is Test {
         try market.deposit(amount_) {} catch {}
     }
 
-    function withdraw(uint256 seed_, uint256 shares_) external {
+    function requestWithdraw(uint256 seed_, uint256 shares_) external {
         address a = _actor(seed_);
         uint256 held = market.sharesOf(a);
         if (held == 0) return;
         shares_ = bound(shares_, 1, held);
         vm.prank(a);
-        try market.withdraw(shares_) {} catch {}
+        try market.requestWithdraw(shares_) {} catch {}
+    }
+
+    function completeWithdraw(uint256 seed_) external {
+        vm.prank(_actor(seed_));
+        try market.completeWithdraw() {} catch {}
+    }
+
+    function cancelWithdraw(uint256 seed_) external {
+        vm.prank(_actor(seed_));
+        try market.cancelWithdraw() {} catch {}
     }
 
     function buyProtection(uint256 seed_, uint256 notional_, uint256 duration_) external {
@@ -141,13 +151,38 @@ contract MarketInvariantTest is Test {
         assertLe(handler.tripPaidOut(), handler.poolBeforeTrip());
     }
 
-    /// Shares and pool assets go to zero together; no shares backed by nothing, no assets owned by no one.
-    function invariant_sharesTrackAssets() public view {
+    /// Every share is held or locked in a withdrawal request; none appear or vanish.
+    function invariant_sharesConserved() public view {
         uint256 sum = market.sharesOf(address(this));
         for (uint256 i; i < handler.actorCount(); ++i) {
-            sum += market.sharesOf(handler.actors(i));
+            address a = handler.actors(i);
+            (uint128 locked,) = market.withdrawRequests(a);
+            sum += market.sharesOf(a) + locked;
         }
         assertEq(sum, market.totalShares(), "shares conserved");
+    }
+
+    /// Pool value stays within what the pool could ever hold.
+    function invariant_poolValueBounded() public view {
+        assertLe(market.poolValue(), market.poolAssets() + market.totalMargin());
+    }
+
+    /// The O(1) aggregate of open positions matches the sum of per-position equity (within rounding).
+    function invariant_aggregatePnlMatchesPositions() public view {
+        int256 sum;
+        uint256 open;
+        for (uint256 i; i < handler.actorCount(); ++i) {
+            address a = handler.actors(i);
+            (bool isOpen,, uint128 size, uint128 margin,,) = market.positions(a);
+            if (!isOpen) continue;
+            ++open;
+            (int256 equity,,) = market.equityOf(a);
+            sum += equity - int256(uint256(margin));
+            size;
+        }
+        int256 agg = market.tradersUnrealizedPnl();
+        int256 diff = agg > sum ? agg - sum : sum - agg;
+        assertLe(diff, int256(2 * open + 2), "aggregate within per-position rounding");
     }
 
     /// Payout ratio is a fraction.

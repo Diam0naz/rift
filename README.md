@@ -61,6 +61,13 @@ The trip already needs a real drain, but the perp mark comes straight from pool 
 - **Time-weighted mark.** The mark sent to the perp is a continuous-time moving average of the spread (`markSmoothingSeconds`, default 30 s). Each spread is weighted by how long it actually held, so a price pushed and put back within one Reactive second moves the mark by nothing, and a move has to persist to reach the mark. The trip still uses the raw spread, because the trip settles at the crash level, and the outflow condition already guards it.
 - **Thin-pool guard.** A `Sync` whose token1 reserve is below `minQuoteReserve` is ignored, and the pool's last good price is kept (`ThinPoolIgnored`).
 
+### Underwriting accounting
+
+- **Shares priced at pool value.** `deposit` and `completeWithdraw` price shares at `poolValue()`: the pool's cash minus traders' unrealized perp PnL net of funding (`tradersUnrealizedPnl()`). A newcomer can't buy into gains the pool hasn't realized yet, and a leaver can't exit before a loss lands. The total comes from running sums of open positions (size × entry mark, size × entry funding), so it costs the same however many positions are open. Rounding always favours the holders who stay.
+- **Two-step withdrawals.** `requestWithdraw` locks shares, and `completeWithdraw` pays them out after `WITHDRAW_DELAY` (1 h) at the pool value at that moment. Locked shares stay in the pool, so they still pay for a trip that lands during the wait. An underwriter who sees a drain on Base can't get out first. `cancelWithdraw` unlocks them.
+- **Liquidation reward.** `liquidate` pays the caller up to `LIQUIDATION_REWARD_BPS` (1%) of the position's size out of its leftover margin, and the rest goes to the pool. That gives someone a reason to close underwater positions before they turn into bad debt.
+- **Stable policy ids.** Ids only ever increase and are never reused, so `policy(id)` and `claim(id)` always refer to the same purchase. A separate list of active policies (`activePolicyIds()`, pruned as policies expire) keeps `trip()` bounded at `MAX_POLICIES`.
+
 ### Liveness guard
 
 If RiftReactive stops (out of lREACT, or callbacks unfunded), a drain could never trip, yet the market would keep selling cover. So:
@@ -163,15 +170,22 @@ What the run showed (2026-11-20). This run used the contracts deployed above, wh
 forge test -vv
 ```
 
-- **Unit tests** (`test/Rift.t.sol`): the full loop in one EVM. Fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, out-of-order marks, the time-weighted mark, the thin-pool guard and the liveness guard.
-- **Invariant fuzzing** (`test/invariant/`): random sequences of deposits, withdrawals, cover purchases, positions, liquidations, marks, trips, claims and time jumps (256 runs × 500 calls). Checked after every call: the market's collateral covers `poolAssets + totalMargin + totalOwed`, a trip never commits more than the pool held, shares are conserved, and the payout ratio stays ≤ 100%.
+- **Unit tests** (`test/Rift.t.sol`): the full loop in one EVM. Fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, out-of-order marks, the time-weighted mark, the thin-pool guard, the liveness guard, share pricing with open perp PnL, delayed withdrawals, the liquidation reward and stable policy ids.
+- **Invariant fuzzing** (`test/invariant/`): random sequences of deposits, withdrawal requests, completions and cancellations, cover purchases, positions, liquidations, marks, trips, claims and time jumps (256 runs × 500 calls). Checked after every call:
+  - the market's collateral covers `poolAssets + totalMargin + totalOwed`;
+  - a trip never commits more than the pool held;
+  - shares are conserved, counting those locked in withdrawal requests;
+  - pool value never exceeds cash plus trader margin;
+  - the O(1) PnL total matches the sum of per-position equity, within rounding;
+  - the payout ratio stays ≤ 100%.
 - **Fork replay** (`test/fork/ReplayTrip.t.sol`): forks Unichain Sepolia just before the recorded trip callback below and replays that exact transaction with `vm.transact`, checking the trip and the 10,000 tUSD payout. Runs when `UNICHAIN_SEPOLIA_RPC` is set, and is skipped otherwise.
 - **Slither** (`slither.config.json`): 0 findings on `src/`. Three detectors are excluded on purpose: `timestamp` (all timing is timestamp-based by design), `incorrect-equality` (only zero checks), and `reentrancy-events` (the only external call before those events is to Reactive's system contract).
 - **CI** (`.github/workflows/ci.yml`): formatting, build, all tests and Slither on every push and pull request. Add an `UNICHAIN_SEPOLIA_RPC` repository secret to run the fork test there too.
 
 ## Known limits (hackathon scope)
 
-- Max 64 live policies so `trip()` can settle everyone in one callback (about 1.3M gas at 64).
+- Max 64 live policies so `trip()` can settle everyone in one callback (about 1.6M gas at 64).
+- `poolValue()` nets all open positions together without the zero floor on each trader's equity, so a position far below zero counts as a pool gain beyond its margin until someone liquidates it. The liquidation reward is there to keep that rare.
 - The pool is the perp counterparty. Funding is linear in the spread and there is no leverage beyond 10x.
 - `resetDemo()` exists on both contracts only so the demo can be replayed.
 

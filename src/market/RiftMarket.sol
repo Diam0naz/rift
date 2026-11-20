@@ -19,6 +19,8 @@ import {IPayable} from "@reactive/interfaces/IPayable.sol";
 ///     On trip, the perp freezes and every position settles at the trip mark.
 ///
 ///  Underwriters deposit collateral, earn premiums and perp losses, and pay out protection and perp profits.
+///  Shares are priced at `poolValue()`, which includes traders' unrealized perp PnL, and withdrawals wait
+///  `WITHDRAW_DELAY` while the shares stay at risk.
 contract RiftMarket is AbstractPayer {
     using SafeERC20 for IERC20;
 
@@ -33,6 +35,10 @@ contract RiftMarket is AbstractPayer {
     uint256 public constant MAX_DURATION = 30 days;
     uint256 public constant MAX_LEVERAGE = 10;
     uint256 public constant MAINTENANCE_BPS = 500; // 5% of size
+    uint256 public constant LIQUIDATION_REWARD_BPS = 100; // 1% of size, paid to the liquidator from leftover margin
+    /// @dev Longer than any trip takes to land (sustain + Reactive + callback), so an underwriter who sees a drain
+    ///      on the origin chain can't get out before the trip settles.
+    uint256 public constant WITHDRAW_DELAY = 1 hours;
     /// @dev funding owed = size * Δ(cumulative bps·seconds) / FUNDING_DENOM
     ///      -> a 100 bps spread held for one day costs the paying side 1% of size.
     uint256 public constant FUNDING_DENOM = BPS * 1 days;
@@ -49,6 +55,11 @@ contract RiftMarket is AbstractPayer {
         uint128 notional;
         uint128 premium;
         uint128 owed; // set by trip(): payout if covered, premium refund if still waiting; paid out by claim()
+    }
+
+    struct WithdrawRequest {
+        uint128 shares; // locked: no longer in sharesOf, still in totalShares (still at risk)
+        uint64 unlockAt;
     }
 
     struct Position {
@@ -76,9 +87,10 @@ contract RiftMarket is AbstractPayer {
     uint256 public maxMarkAge = 1 hours;
 
     // Underwriting pool
-    uint256 public poolAssets;
-    uint256 public totalShares;
+    uint256 public poolAssets; // cash the pool holds (excludes trader margin and amounts owed to buyers)
+    uint256 public totalShares; // includes shares locked in withdrawal requests
     mapping(address user => uint256 shares) public sharesOf;
+    mapping(address user => WithdrawRequest request) public withdrawRequests;
 
     // Mark + funding
     int256 public markBps;
@@ -88,11 +100,18 @@ contract RiftMarket is AbstractPayer {
     uint256 public lastFundingAt;
 
     // Products
-    Policy[] internal _policies;
+    mapping(uint256 id => Policy policy) internal _policies; // ids are never reused
+    uint256 public nextPolicyId;
+    uint256[] internal _activeIds; // unsettled policies; expired ones are pruned lazily. Bounded by MAX_POLICIES.
     mapping(address trader => Position position) public positions;
     uint256 public totalMargin;
     uint256 public openLongSize;
     uint256 public openShortSize;
+    // Aggregates of open positions, so traders' total unrealized PnL is O(1): Σ size·entryMark, Σ size·entryCumFunding
+    int256 internal _longSizeEntryMark;
+    int256 internal _shortSizeEntryMark;
+    int256 internal _longSizeEntryFunding;
+    int256 internal _shortSizeEntryFunding;
 
     // Trip
     bool public tripped;
@@ -109,6 +128,8 @@ contract RiftMarket is AbstractPayer {
     event CoverDelayUpdated(uint256 coverDelay);
     event MaxMarkAgeUpdated(uint256 maxMarkAge);
     event Deposited(address indexed user, uint256 assets, uint256 shares);
+    event WithdrawRequested(address indexed user, uint256 shares, uint256 unlockAt);
+    event WithdrawCancelled(address indexed user, uint256 shares);
     event Withdrawn(address indexed user, uint256 assets, uint256 shares);
     event MarkUpdated(
         int256 markBps, uint256 observedAt, uint256 receivedAt, uint256 originChainId, uint256 originTxHash
@@ -131,6 +152,7 @@ contract RiftMarket is AbstractPayer {
     );
     event PositionOpened(address indexed trader, bool isLong, uint256 size, uint256 margin, int256 entryMark);
     event PositionClosed(address indexed trader, int256 pnl, int256 funding, uint256 payout, bool liquidated);
+    event Liquidated(address indexed trader, address indexed liquidator, uint256 reward);
 
     // ---------------------------------------------------------------- errors
 
@@ -154,6 +176,11 @@ contract RiftMarket is AbstractPayer {
     error StaleMark(uint256 age);
     error NothingToClaim();
     error UnclaimedPayouts();
+    error PoolInsolvent();
+    error WithdrawPending();
+    error NoWithdrawRequest();
+    error WithdrawLocked(uint256 unlockAt);
+    error InsufficientShares();
 
     // ---------------------------------------------------------------- modifiers
 
@@ -230,7 +257,7 @@ contract RiftMarket is AbstractPayer {
         tripOutflowBps = 0;
         trippedAt = 0;
         payoutRatioBps = 0;
-        delete _policies;
+        delete _activeIds; // already empty after a trip; settled policies stay readable by id
         lastFundingAt = block.timestamp;
     }
 
@@ -275,14 +302,15 @@ contract RiftMarket is AbstractPayer {
         // Settle every live policy against the trip's observation time (Reactive's clock), with no
         // external calls: one buyer that can't receive tokens must not be able to revert the whole trip.
         // Pass 1: policies still in their waiting period are voided and refunded their premium.
-        uint256 n = _policies.length;
+        uint256 n = _activeIds.length;
         uint256 coveredNotional = 0;
         for (uint256 i; i < n; ++i) {
-            Policy storage p = _policies[i];
+            uint256 id = _activeIds[i];
+            Policy storage p = _policies[id];
             if (p.settled || p.expiry < observedAt_) continue;
             if (p.activeAt > observedAt_) {
                 uint256 refund = p.premium <= poolAssets ? p.premium : poolAssets;
-                _settle(i, p, refund, false);
+                _settle(id, p, refund, false);
             } else {
                 coveredNotional += p.notional;
             }
@@ -296,20 +324,30 @@ contract RiftMarket is AbstractPayer {
         uint256 ratio = full ? BPS : (available * BPS) / coveredNotional;
         payoutRatioBps = ratio;
         for (uint256 i; i < n; ++i) {
-            Policy storage p = _policies[i];
+            uint256 id = _activeIds[i];
+            Policy storage p = _policies[id];
             if (p.settled || p.expiry < observedAt_) continue;
             uint256 notional = p.notional;
-            _settle(i, p, full ? notional : (notional * available) / coveredNotional, true);
+            _settle(id, p, full ? notional : (notional * available) / coveredNotional, true);
         }
+        delete _activeIds; // every entry is now settled or expired
 
         emit Tripped(markBps_, outflowBps_, observedAt_, block.timestamp, originChainId_, originTxHash_, ratio);
     }
 
     // ================================================================ underwriting pool
 
+    /// @notice Deposit collateral for pool shares, priced at `poolValue()` (unrealized perp PnL included).
     function deposit(uint256 assets_) external notTripped returns (uint256 shares) {
         if (assets_ == 0) revert ZeroAmount();
-        shares = totalShares == 0 || poolAssets == 0 ? assets_ : (assets_ * totalShares) / poolAssets;
+        if (totalShares == 0) {
+            shares = assets_;
+        } else {
+            uint256 value = poolValue();
+            if (value == 0) revert PoolInsolvent();
+            shares = (assets_ * totalShares) / value; // rounds down: in favour of existing holders
+        }
+        if (shares == 0) revert ZeroAmount();
         collateral.safeTransferFrom(msg.sender, address(this), assets_);
         poolAssets += assets_;
         totalShares += shares;
@@ -317,16 +355,40 @@ contract RiftMarket is AbstractPayer {
         emit Deposited(msg.sender, assets_, shares);
     }
 
-    function withdraw(uint256 shares_) external returns (uint256 assets) {
+    /// @notice Step 1 of 2: lock shares for withdrawal. They keep earning and losing like any other share
+    ///         until `completeWithdraw`, so requesting right after seeing a drain doesn't dodge the trip.
+    function requestWithdraw(uint256 shares_) external {
         if (shares_ == 0) revert ZeroAmount();
-        assets = (shares_ * poolAssets) / totalShares;
-        // Underwriters can't pull capital that backs live coverage or open perp exposure.
-        if (poolAssets - assets < reservedLiquidity()) revert InsufficientLiquidity();
+        if (withdrawRequests[msg.sender].shares != 0) revert WithdrawPending();
+        if (shares_ > sharesOf[msg.sender]) revert InsufficientShares();
         sharesOf[msg.sender] -= shares_;
-        totalShares -= shares_;
+        uint64 unlockAt = SafeCast.toUint64(block.timestamp + WITHDRAW_DELAY);
+        withdrawRequests[msg.sender] = WithdrawRequest({shares: SafeCast.toUint128(shares_), unlockAt: unlockAt});
+        emit WithdrawRequested(msg.sender, shares_, unlockAt);
+    }
+
+    function cancelWithdraw() external {
+        uint256 shares = withdrawRequests[msg.sender].shares;
+        if (shares == 0) revert NoWithdrawRequest();
+        delete withdrawRequests[msg.sender];
+        sharesOf[msg.sender] += shares;
+        emit WithdrawCancelled(msg.sender, shares);
+    }
+
+    /// @notice Step 2 of 2: after `WITHDRAW_DELAY`, burn the locked shares at the pool value at this moment.
+    function completeWithdraw() external returns (uint256 assets) {
+        WithdrawRequest memory r = withdrawRequests[msg.sender];
+        if (r.shares == 0) revert NoWithdrawRequest();
+        if (block.timestamp < r.unlockAt) revert WithdrawLocked(r.unlockAt);
+        _accrueFunding();
+        assets = (uint256(r.shares) * poolValue()) / totalShares; // rounds down: in favour of remaining holders
+        // Underwriters can't pull capital that backs live coverage or open perp exposure.
+        if (assets > poolAssets || poolAssets - assets < reservedLiquidity()) revert InsufficientLiquidity();
+        delete withdrawRequests[msg.sender];
+        totalShares -= r.shares;
         poolAssets -= assets;
-        collateral.safeTransfer(msg.sender, assets);
-        emit Withdrawn(msg.sender, assets, shares_);
+        if (assets > 0) collateral.safeTransfer(msg.sender, assets);
+        emit Withdrawn(msg.sender, assets, r.shares);
     }
 
     // ================================================================ drain default swap
@@ -343,6 +405,9 @@ contract RiftMarket is AbstractPayer {
 
         if (activeNotional() + notional_ > poolAssets) revert InsufficientLiquidity();
 
+        _pruneExpired();
+        if (_activeIds.length >= MAX_POLICIES) revert TooManyPolicies();
+
         Policy memory p = Policy({
             buyer: msg.sender,
             activeAt: SafeCast.toUint64(block.timestamp + coverDelay),
@@ -352,13 +417,15 @@ contract RiftMarket is AbstractPayer {
             premium: SafeCast.toUint128(premium),
             owed: 0
         });
-        id = _storePolicy(p);
+        id = nextPolicyId++;
+        _policies[id] = p;
+        _activeIds.push(id);
         emit ProtectionBought(id, msg.sender, notional_, premium, p.activeAt, p.expiry);
     }
 
     /// @notice Pay out a settled policy's payout or refund. Anyone can call it; funds always go to the buyer.
     function claim(uint256 id_) external returns (uint256 amount) {
-        Policy storage p = _policies[id_];
+        Policy storage p = _policies[id_]; // an unknown id has owed == 0 and reverts below
         amount = p.owed;
         if (amount == 0) revert NothingToClaim();
         p.owed = 0;
@@ -382,8 +449,17 @@ contract RiftMarket is AbstractPayer {
         _accrueFunding();
         collateral.safeTransferFrom(msg.sender, address(this), margin_);
         totalMargin += margin_;
-        if (isLong_) openLongSize += size_;
-        else openShortSize += size_;
+        int256 sizeEntryMark = int256(size_) * markBps;
+        int256 sizeEntryFunding = int256(size_) * cumFunding;
+        if (isLong_) {
+            openLongSize += size_;
+            _longSizeEntryMark += sizeEntryMark;
+            _longSizeEntryFunding += sizeEntryFunding;
+        } else {
+            openShortSize += size_;
+            _shortSizeEntryMark += sizeEntryMark;
+            _shortSizeEntryFunding += sizeEntryFunding;
+        }
 
         positions[msg.sender] = Position({
             open: true,
@@ -397,7 +473,7 @@ contract RiftMarket is AbstractPayer {
     }
 
     function closePosition() external {
-        _close(msg.sender, false);
+        _close(msg.sender, address(0));
     }
 
     function liquidate(address trader_) external {
@@ -405,7 +481,7 @@ contract RiftMarket is AbstractPayer {
         if (!pos.open) revert NoPosition();
         (int256 equity,,) = equityOf(trader_);
         if (equity >= int256((uint256(pos.size) * MAINTENANCE_BPS) / BPS)) revert NotLiquidatable();
-        _close(trader_, true);
+        _close(trader_, msg.sender);
     }
 
     // ================================================================ views
@@ -428,10 +504,32 @@ contract RiftMarket is AbstractPayer {
         equity = int256(uint256(pos.margin)) + pnl - funding;
     }
 
+    /// @notice Traders' total unrealized PnL net of funding, from the open-position aggregates.
+    ///         Positive = the pool owes traders. Summed over positions without the zero floor on each
+    ///         trader's equity, so deep-underwater positions count as pool gains beyond their margin until
+    ///         liquidated - which the liquidation reward keeps rare.
+    function tradersUnrealizedPnl() public view returns (int256) {
+        int256 longSize = int256(openLongSize);
+        int256 shortSize = int256(openShortSize);
+        int256 cf = currentCumFunding();
+        int256 pnl = (longSize * markBps - _longSizeEntryMark) - (shortSize * markBps - _shortSizeEntryMark);
+        int256 funding = (longSize * cf - _longSizeEntryFunding) - (shortSize * cf - _shortSizeEntryFunding);
+        return pnl / int256(BPS) - funding / int256(FUNDING_DENOM);
+    }
+
+    /// @notice What the pool is worth to share holders: cash minus what open positions are owed.
+    ///         Bounded below by 0 and above by cash plus all trader margin (the most the pool could collect).
+    function poolValue() public view returns (uint256) {
+        int256 value = int256(poolAssets) - tradersUnrealizedPnl();
+        if (value <= 0) return 0;
+        uint256 cap = poolAssets + totalMargin;
+        return uint256(value) > cap ? cap : uint256(value);
+    }
+
     function activeNotional() public view returns (uint256 total) {
-        uint256 n = _policies.length;
+        uint256 n = _activeIds.length;
         for (uint256 i; i < n; ++i) {
-            Policy memory p = _policies[i];
+            Policy storage p = _policies[_activeIds[i]];
             if (!p.settled && p.expiry >= block.timestamp) total += p.notional;
         }
     }
@@ -442,8 +540,13 @@ contract RiftMarket is AbstractPayer {
         return activeNotional() + netPerp;
     }
 
+    /// @notice Policies ever sold; ids run from 0 to policiesCount() - 1.
     function policiesCount() external view returns (uint256) {
-        return _policies.length;
+        return nextPolicyId;
+    }
+
+    function activePolicyIds() external view returns (uint256[] memory) {
+        return _activeIds;
     }
 
     function policy(uint256 id_) external view returns (Policy memory) {
@@ -466,7 +569,8 @@ contract RiftMarket is AbstractPayer {
         lastFundingAt = block.timestamp;
     }
 
-    function _close(address trader_, bool liquidated_) internal {
+    /// @param liquidator_ address(0) for a normal close; otherwise the caller of `liquidate`, who is paid the reward.
+    function _close(address trader_, address liquidator_) internal {
         Position memory pos = positions[trader_];
         if (!pos.open) revert NoPosition();
         _accrueFunding();
@@ -474,16 +578,32 @@ contract RiftMarket is AbstractPayer {
         delete positions[trader_];
 
         totalMargin -= pos.margin;
-        if (pos.isLong) openLongSize -= pos.size;
-        else openShortSize -= pos.size;
+        int256 size = int256(uint256(pos.size));
+        if (pos.isLong) {
+            openLongSize -= pos.size;
+            _longSizeEntryMark -= size * pos.entryMark;
+            _longSizeEntryFunding -= size * pos.entryCumFunding;
+        } else {
+            openShortSize -= pos.size;
+            _shortSizeEntryMark -= size * pos.entryMark;
+            _shortSizeEntryFunding -= size * pos.entryCumFunding;
+        }
 
-        // The pool is the counterparty: it absorbs (margin - payout) or funds (payout - margin).
-        uint256 payout = equity > 0 ? uint256(equity) : 0;
-        if (liquidated_) payout = 0; // remaining equity goes to underwriters
         uint256 margin = pos.margin;
-        if (payout > margin) {
+        bool liquidated = liquidator_ != address(0);
+        uint256 payout = equity > 0 ? uint256(equity) : 0;
+        uint256 reward = 0;
+        if (liquidated) {
+            // Liquidator gets up to LIQUIDATION_REWARD_BPS of size out of what's left; the rest goes to the pool.
+            // Liquidation needs equity < 5% of size <= margin, so the reward always fits inside the margin.
+            uint256 maxReward = (uint256(pos.size) * LIQUIDATION_REWARD_BPS) / BPS;
+            reward = payout < maxReward ? payout : maxReward;
+            payout = 0;
+            poolAssets += margin - reward;
+        } else if (payout > margin) {
+            // The pool is the counterparty: it funds (payout - margin), up to what it has.
             uint256 owed = payout - margin;
-            if (owed > poolAssets) owed = poolAssets; // pool can't go negative
+            if (owed > poolAssets) owed = poolAssets;
             poolAssets -= owed;
             payout = margin + owed;
         } else {
@@ -491,7 +611,11 @@ contract RiftMarket is AbstractPayer {
         }
 
         if (payout > 0) collateral.safeTransfer(trader_, payout);
-        emit PositionClosed(trader_, pnl, funding, payout, liquidated_);
+        emit PositionClosed(trader_, pnl, funding, payout, liquidated);
+        if (liquidated) {
+            if (reward > 0) collateral.safeTransfer(liquidator_, reward);
+            emit Liquidated(trader_, liquidator_, reward);
+        }
     }
 
     function _settle(uint256 id_, Policy storage p_, uint256 owed_, bool covered_) internal {
@@ -502,18 +626,16 @@ contract RiftMarket is AbstractPayer {
         emit PolicySettled(id_, p_.buyer, owed_, covered_);
     }
 
-    function _storePolicy(Policy memory p_) internal returns (uint256) {
-        uint256 n = _policies.length;
-        // Reuse an expired, never-settled slot, or a settled one that has been claimed, before growing the array.
-        for (uint256 i; i < n; ++i) {
-            Policy memory old = _policies[i];
-            if ((!old.settled && old.expiry < block.timestamp) || (old.settled && old.owed == 0)) {
-                _policies[i] = p_;
-                return i;
+    /// @dev Drop expired policies from the active list (swap-and-pop). Their data stays readable by id.
+    function _pruneExpired() internal {
+        uint256 i;
+        while (i < _activeIds.length) {
+            if (_policies[_activeIds[i]].expiry < block.timestamp) {
+                _activeIds[i] = _activeIds[_activeIds.length - 1];
+                _activeIds.pop();
+            } else {
+                ++i;
             }
         }
-        if (n >= MAX_POLICIES) revert TooManyPolicies();
-        _policies.push(p_);
-        return n;
     }
 }
