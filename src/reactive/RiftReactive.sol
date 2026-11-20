@@ -10,12 +10,15 @@ import {ISystemContract} from "@reactive/interfaces/ISystemContract.sol";
 ///  It subscribes to:
 ///   - `Sync` on the twin pools (Base Sepolia + Unichain Sepolia) -> mirrors both prices, computes the spread
 ///   - ERC-20 `Transfer` of the vault asset into / out of the protected vault on Base -> sliding outflow window
+///   - `Tripped` on RiftMarket (Unichain Sepolia) -> confirmation that the trip callback was delivered
 ///   - optionally a CRON tick, so time-based conditions still resolve when no swaps happen
 ///
 ///  And sends two callbacks to RiftMarket on Unichain:
 ///   - `updateMark(spread)` whenever the spread moves by more than `markEpsilonBps` (or on heartbeat)
 ///   - `trip(...)` when BOTH the spread has stayed beyond `tripSpreadBps` for `sustainSeconds`
-///     AND vault outflow inside `windowSeconds` exceeds `tripOutflowBps`.
+///     AND vault outflow inside `windowSeconds` exceeds `tripOutflowBps`. Until the market's `Tripped` event
+///     comes back, the same trip is re-sent on later events (at most every TRIP_RETRY_SECONDS), so a lost or
+///     failed callback can't leave the market untripped forever. `trip()` on the market is idempotent.
 ///
 ///  The two-condition trigger is the anti-manipulation core: a price spike alone (someone pushing a thin pool)
 ///  or a large legitimate withdrawal alone cannot trip protection payouts.
@@ -26,10 +29,14 @@ contract RiftReactive is AbstractReactive {
     uint256 private constant SYNC_TOPIC = uint256(keccak256("Sync(uint112,uint112)"));
     uint256 private constant TRANSFER_TOPIC = uint256(keccak256("Transfer(address,address,uint256)"));
     address private constant CRON_SOURCE = 0x0000000000000000000000000000000000fffFfF;
+    /// @dev RiftMarket's `Tripped` event, used as the delivery confirmation for the trip callback.
+    uint256 private constant TRIPPED_TOPIC =
+        uint256(keccak256("Tripped(int256,uint256,uint256,uint256,uint256,uint256,uint256)"));
 
     uint64 private constant MARK_GAS = 300_000;
     uint64 private constant TRIP_GAS = 3_000_000;
     uint256 private constant MAX_WINDOW_ENTRIES = 256;
+    uint256 public constant TRIP_RETRY_SECONDS = 30;
 
     // ---------------------------------------------------------------- config
 
@@ -82,6 +89,16 @@ contract RiftReactive is AbstractReactive {
 
     uint256 public breachSince; // 0 = not in breach
     bool public tripped;
+    bool public tripConfirmed; // the market's Tripped event has been seen
+    uint256 public lastTripSentAt;
+    uint256 public tripsSent;
+
+    // The trip as first decided; retries re-send exactly this.
+    int256 internal _tripSpread;
+    uint256 internal _tripOutflowBps;
+    uint256 internal _tripObservedAt;
+    uint256 internal _tripOriginChainId;
+    uint256 internal _tripOriginTxHash;
 
     int256 public lastSentMark;
     uint256 public lastSentAt;
@@ -97,6 +114,7 @@ contract RiftReactive is AbstractReactive {
     event TripSent(
         int256 spreadBps, uint256 outflowBps, uint256 observedAt, uint256 originChainId, uint256 originTxHash
     );
+    event TripConfirmed(uint256 marketTxHash);
     event ParamsUpdated(Params params);
 
     error NotOwner();
@@ -131,6 +149,9 @@ contract RiftReactive is AbstractReactive {
         SYSTEM.subscribe(baseId, cfg_.vaultAsset, TRANSFER_TOPIC, vaultTopic, REACTIVE_IGNORE, REACTIVE_IGNORE);
         SYSTEM.subscribe(baseId, cfg_.vaultAsset, TRANSFER_TOPIC, REACTIVE_IGNORE, vaultTopic, REACTIVE_IGNORE);
 
+        // Delivery confirmation: the market emits Tripped when the trip callback lands.
+        SYSTEM.subscribe(cfg_.uniChainId, cfg_.market, TRIPPED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+
         // Optional clock so sustained-breach and window expiry resolve without new swaps.
         if (cfg_.cronTopic != 0) {
             SYSTEM.subscribe(0, CRON_SOURCE, cfg_.cronTopic, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
@@ -140,6 +161,10 @@ contract RiftReactive is AbstractReactive {
     // ---------------------------------------------------------------- reactive entry point
 
     function react(LogRecord calldata log_) external onlySystem {
+        if (log_.topic0 == TRIPPED_TOPIC) {
+            _onTripped(log_);
+            return;
+        }
         if (log_.topic0 == SYNC_TOPIC) {
             _onSync(log_);
         } else if (log_.topic0 == TRANSFER_TOPIC && log_.contractAddress == vaultAsset && log_.chainId == baseChainId) {
@@ -177,6 +202,8 @@ contract RiftReactive is AbstractReactive {
     /// @notice DEMO ONLY: re-arm after a trip so the loop can be shown again.
     function resetDemo(uint256 vaultBalance_) external onlyOwner {
         tripped = false;
+        tripConfirmed = false;
+        lastTripSentAt = 0;
         breachSince = 0;
         vaultBalance = vaultBalance_;
         windowOutflow = 0;
@@ -227,8 +254,19 @@ contract RiftReactive is AbstractReactive {
         }
     }
 
+    function _onTripped(LogRecord calldata log_) internal {
+        if (log_.chainId != uniChainId || log_.contractAddress != market) return;
+        if (!tripped || tripConfirmed) return;
+        tripConfirmed = true;
+        emit TripConfirmed(log_.txHash);
+    }
+
     function _evaluate(LogRecord calldata log_) internal {
-        if (tripped) return;
+        if (tripped) {
+            // Re-send until the market confirms; any subscribed event (or a cron tick) drives the retry.
+            if (!tripConfirmed && block.timestamp - lastTripSentAt >= TRIP_RETRY_SECONDS) _requestTrip();
+            return;
+        }
         uint256 nowTs = block.timestamp;
         _pruneWindow(nowTs);
 
@@ -280,17 +318,28 @@ contract RiftReactive is AbstractReactive {
     }
 
     function _sendTrip(int256 spread_, uint256 outBps_, uint256 nowTs_, LogRecord calldata log_) internal {
+        _tripSpread = spread_;
+        _tripOutflowBps = outBps_;
+        _tripObservedAt = nowTs_;
+        _tripOriginChainId = log_.chainId;
+        _tripOriginTxHash = log_.txHash;
+        _requestTrip();
+    }
+
+    function _requestTrip() internal {
+        lastTripSentAt = block.timestamp;
+        tripsSent++;
         bytes memory payload = abi.encodeWithSignature(
             "trip(address,int256,uint256,uint256,uint256,uint256)",
             address(0),
-            spread_,
-            outBps_,
-            nowTs_,
-            log_.chainId,
-            log_.txHash
+            _tripSpread,
+            _tripOutflowBps,
+            _tripObservedAt,
+            _tripOriginChainId,
+            _tripOriginTxHash
         );
         _callback(payload, TRIP_GAS);
-        emit TripSent(spread_, outBps_, nowTs_, log_.chainId, log_.txHash);
+        emit TripSent(_tripSpread, _tripOutflowBps, _tripObservedAt, _tripOriginChainId, _tripOriginTxHash);
     }
 
     function _callback(bytes memory payload_, uint64 gas_) internal {

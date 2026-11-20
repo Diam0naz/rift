@@ -16,7 +16,7 @@ Both products run off **one index**: the spread computed by `RiftReactive`. One 
 | Leg | Product | Settles on |
 |---|---|---|
 | Continuous | Spread perp: long/short the Unichain-vs-Base spread in bps | every `updateMark` callback |
-| Jump | Drain Default Swap: pay a premium, receive `notional` if the vault is drained | the `trip` callback, paid in the same tx |
+| Jump | Drain Default Swap: pay a premium, receive `notional` if the vault is drained | the `trip` callback fixes every payout; buyers `claim()` it |
 
 ## Why it needs Reactive Omni
 
@@ -46,6 +46,13 @@ Both products run off **one index**: the spread computed by `RiftReactive`. One 
 2. vault outflow inside `windowSeconds` ≥ `tripOutflowBps` of the vault.
 
 A price spike alone (someone pushing a thin pool to collect on protection) can't trip it, and neither can a large legitimate withdrawal alone. Both cases are covered by tests. All timers use timestamps, never block counts (Base Sepolia runs 200ms blocks).
+
+### Settlement safeguards
+
+- **Cover waiting period.** A drain is public on Base seconds before the trip lands on Unichain. A policy covers nothing until `coverDelay` (default 10 minutes, owner-settable up to 1 hour) after purchase; the delay is fixed on the policy when it's bought. At a trip, policies still waiting are refunded their premium instead of paid, and they don't dilute the payout ratio of covered buyers. Timing is checked against the trip's `observedAt` on Reactive's clock.
+- **Claim-based payouts.** `trip()` makes no token transfers: it records what each policy is owed (`PolicySettled`), and `claim(id)` pays it. Anyone can call `claim`, but funds always go to the buyer. A buyer who can't receive tokens (for example a blocklisted address) can't make the trip revert for everyone else.
+- **Trip retry with confirmation.** RiftReactive subscribes to the market's own `Tripped` event on Unichain. Until it sees it, every later event re-sends the same trip, at most every `TRIP_RETRY_SECONDS` (30 s). `trip()` is idempotent, so duplicates are harmless.
+- **Out-of-order marks.** `updateMark` ignores a mark observed earlier than the current one and emits `StaleMarkIgnored`.
 
 ## Contracts
 
@@ -97,11 +104,17 @@ forge script script/Demo.s.sol:DemoSwap    --rpc-url base_sepolia --broadcast
 # Needs a mark on the market (from loop 1) before it can open the perp.
 forge script script/Demo.s.sol:DemoSetup   --rpc-url unichain_sepolia --broadcast   # buy protection + open perp
 
-# Loop 2: vault drained on Base -> reactive tx -> trip on Unichain (policies paid in the same tx)
+# Coverage starts coverDelay (10 min) after purchase: wait that long after DemoSetup before the exploit,
+# or have the owner call setCoverDelay(0) before DemoSetup for a quick demo. Otherwise the policy is only refunded.
+
+# Loop 2: vault drained on Base -> reactive tx -> trip on Unichain (payouts fixed in that tx)
 forge script script/Demo.s.sol:DemoExploit --rpc-url base_sepolia --broadcast
 # The breach must hold for SUSTAIN_SECONDS (2s) on Reactive's clock, and it is only re-checked on a new event.
 # With cron off (the default), send any later Base event (within WINDOW_SECONDS) to trip:
 SWAP_IN=1000000000000000000 forge script script/Demo.s.sol:DemoSwap --rpc-url base_sepolia --broadcast
+
+# Collect the payout for policy 0
+cast send $MARKET "claim(uint256)" 0 --rpc-url unichain_sepolia --private-key $PRIVATE_KEY
 ```
 
 ## Deployed addresses & transaction hashes
@@ -125,7 +138,7 @@ Deployed 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`. The two p
 
 Latency is the Unichain callback block's timestamp minus the Base origin block's timestamp. Clocks on the three chains differ by about a second.
 
-What the run showed (2026-11-20):
+What the run showed (2026-11-20). This run used the contracts deployed above, which predate the settlement safeguards: payouts went out inside the trip callback, with no waiting period or claim step.
 
 - **updateMark:** a 20 tBASE swap on Base moved the spread to +403 bps, and the market's mark updated to +403 about 2 s later.
 - **trip:** [`DemoExploit`](https://sepolia.basescan.org/tx/0xe1f1b9bd672729ab8d39dfd1a86cb4d8db0a6fa92b7abd982e278a7e33545122) drained 30% of the vault and dumped the loot into the Base pool, pushing the spread to −7,446 bps. RiftReactive recorded the breach but didn't trip until the follow-up swap arrived, after the 2 s sustain period. The trip callback paid policy 0 its full 10,000 tUSD notional (payout ratio 100%) in the same transaction and froze the perp at −7,436 bps.
@@ -136,7 +149,7 @@ What the run showed (2026-11-20):
 forge test -vv
 ```
 
-They cover the full loop in one EVM: fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, and callback auth.
+They cover the full loop in one EVM: fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, and out-of-order marks.
 
 ## Known limits (hackathon scope)
 

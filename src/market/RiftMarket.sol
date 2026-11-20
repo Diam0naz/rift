@@ -11,7 +11,9 @@ import {IPayable} from "@reactive/interfaces/IPayable.sol";
 /// @notice One underwriting pool, two products, settled by RiftReactive callbacks (Unichain Sepolia).
 ///
 ///  1. Drain Default Swap (jump leg): buyers pay a premium up front for coverage of `notional` until `expiry`.
-///     When RiftReactive calls `trip()`, every live policy is paid in the same transaction - no claim process.
+///     Coverage starts `coverDelay` after purchase, so a policy bought after a drain is already public can't pay.
+///     When RiftReactive calls `trip()`, every covered policy's payout is fixed in that transaction;
+///     buyers (or anyone on their behalf) then `claim()` it. Policies still waiting get their premium back.
 ///  2. Spread perp (continuous leg): long/short the Unichain-vs-Base price spread (in bps) against the pool.
 ///     Funding accrues every second: when the spread is positive, longs pay; when negative, shorts pay.
 ///     On trip, the perp freezes and every position settles at the trip mark.
@@ -23,7 +25,8 @@ contract RiftMarket is AbstractPayer {
     // ---------------------------------------------------------------- constants
 
     uint256 public constant BPS = 10_000;
-    uint256 public constant MAX_POLICIES = 64; // bounded so trip() can pay everyone in one callback
+    uint256 public constant MAX_POLICIES = 64; // bounded so trip() can settle everyone in one callback
+    uint256 public constant MAX_COVER_DELAY = 1 hours;
     uint256 public constant MIN_DURATION = 60;
     uint256 public constant MAX_DURATION = 30 days;
     uint256 public constant MAX_LEVERAGE = 10;
@@ -34,11 +37,16 @@ contract RiftMarket is AbstractPayer {
 
     // ---------------------------------------------------------------- types
 
+    /// @dev Packed into 3 slots: [buyer, activeAt] [expiry, settled, notional] [premium, owed].
+    ///      `settled` and `owed` share slots that are already non-zero, which keeps trip() cheap.
     struct Policy {
         address buyer;
-        uint128 notional;
+        uint64 activeAt; // coverage starts here (Unichain clock at purchase + coverDelay)
         uint64 expiry;
-        bool settled;
+        bool settled; // resolved by a trip
+        uint128 notional;
+        uint128 premium;
+        uint128 owed; // set by trip(): payout if covered, premium refund if still waiting; paid out by claim()
     }
 
     struct Position {
@@ -57,6 +65,9 @@ contract RiftMarket is AbstractPayer {
     address public reactive; // RiftReactive on Lasna, set once after it is deployed
 
     uint256 public premiumBpsPerDay = 10; // 0.10% of notional per day
+    /// @notice Waiting period before a new policy covers anything. A drain on the origin chain is public
+    ///         seconds before the trip lands here; without this, anyone could buy cover after the fact.
+    uint256 public coverDelay = 10 minutes;
 
     // Underwriting pool
     uint256 public poolAssets;
@@ -83,20 +94,25 @@ contract RiftMarket is AbstractPayer {
     uint256 public tripOutflowBps;
     uint256 public trippedAt;
     uint256 public payoutRatioBps;
+    uint256 public totalOwed; // settled but unclaimed payouts and refunds, already removed from poolAssets
 
     // ---------------------------------------------------------------- events
 
     event ReactiveSet(address reactive);
     event PremiumUpdated(uint256 premiumBpsPerDay);
+    event CoverDelayUpdated(uint256 coverDelay);
     event Deposited(address indexed user, uint256 assets, uint256 shares);
     event Withdrawn(address indexed user, uint256 assets, uint256 shares);
     event MarkUpdated(
         int256 markBps, uint256 observedAt, uint256 receivedAt, uint256 originChainId, uint256 originTxHash
     );
+    event StaleMarkIgnored(int256 markBps, uint256 observedAt, uint256 currentObservedAt);
     event ProtectionBought(
-        uint256 indexed id, address indexed buyer, uint256 notional, uint256 premium, uint256 expiry
+        uint256 indexed id, address indexed buyer, uint256 notional, uint256 premium, uint256 activeAt, uint256 expiry
     );
-    event PolicyPaid(uint256 indexed id, address indexed buyer, uint256 amount);
+    /// @param covered true = payout for a covered policy; false = premium refund for one still in its waiting period
+    event PolicySettled(uint256 indexed id, address indexed buyer, uint256 owed, bool covered);
+    event Claimed(uint256 indexed id, address indexed buyer, uint256 amount);
     event Tripped(
         int256 markBps,
         uint256 outflowBps,
@@ -126,6 +142,9 @@ contract RiftMarket is AbstractPayer {
     error NoPosition();
     error TooMuchLeverage();
     error NotLiquidatable();
+    error BadCoverDelay();
+    error NothingToClaim();
+    error UnclaimedPayouts();
 
     // ---------------------------------------------------------------- modifiers
 
@@ -167,14 +186,22 @@ contract RiftMarket is AbstractPayer {
         emit PremiumUpdated(bps_);
     }
 
+    function setCoverDelay(uint256 delay_) external onlyOwner {
+        if (delay_ > MAX_COVER_DELAY) revert BadCoverDelay();
+        coverDelay = delay_; // applies to policies bought from now on; existing ones keep their activeAt
+        emit CoverDelayUpdated(delay_);
+    }
+
     /// @notice Pay outstanding callback debt to the proxy from this contract's native balance.
     function coverDebt() external {
         _coverDebt();
     }
 
     /// @notice DEMO ONLY: clear trip state and settled policies so the loop can be replayed.
+    ///         Refuses while any payout or refund is unclaimed, so a reset can't erase what buyers are owed.
     function resetDemo() external onlyOwner {
         if (!tripped) revert NotTripped();
+        if (totalOwed != 0) revert UnclaimedPayouts();
         tripped = false;
         tripMark = 0;
         tripOutflowBps = 0;
@@ -194,6 +221,11 @@ contract RiftMarket is AbstractPayer {
         uint256 originTxHash_
     ) external onlyReactive(sender_) {
         if (tripped) return; // late marks after a trip are ignored
+        // Callbacks can land out of order: never let an older observation overwrite a newer one.
+        if (observedAt_ < markObservedAt) {
+            emit StaleMarkIgnored(markBps_, observedAt_, markObservedAt);
+            return;
+        }
         _accrueFunding();
         markBps = markBps_;
         markObservedAt = observedAt_;
@@ -217,20 +249,29 @@ contract RiftMarket is AbstractPayer {
         tripOutflowBps = outflowBps_;
         trippedAt = block.timestamp;
 
-        // Pay every live policy now, pro-rata if the pool can't cover all of them.
-        uint256 live = activeNotional();
-        uint256 ratio = live == 0 ? BPS : (poolAssets >= live ? BPS : (poolAssets * BPS) / live);
-        payoutRatioBps = ratio;
-
+        // Settle every live policy against the trip's observation time (Reactive's clock), with no
+        // external calls: one buyer that can't receive tokens must not be able to revert the whole trip.
+        // Pass 1: policies still in their waiting period are voided and refunded their premium.
         uint256 n = _policies.length;
+        uint256 live;
         for (uint256 i; i < n; ++i) {
             Policy storage p = _policies[i];
-            if (p.settled || p.expiry < block.timestamp) continue;
-            p.settled = true;
-            uint256 amount = (uint256(p.notional) * ratio) / BPS;
-            poolAssets -= amount;
-            collateral.safeTransfer(p.buyer, amount);
-            emit PolicyPaid(i, p.buyer, amount);
+            if (p.settled || p.expiry < observedAt_) continue;
+            if (p.activeAt > observedAt_) {
+                uint256 refund = p.premium <= poolAssets ? p.premium : poolAssets;
+                _settle(i, p, refund, false);
+            } else {
+                live += p.notional;
+            }
+        }
+
+        // Pass 2: covered policies get their notional, pro-rata if the pool can't cover all of them.
+        uint256 ratio = live == 0 || poolAssets >= live ? BPS : (poolAssets * BPS) / live;
+        payoutRatioBps = ratio;
+        for (uint256 i; i < n; ++i) {
+            Policy storage p = _policies[i];
+            if (p.settled || p.expiry < observedAt_) continue;
+            _settle(i, p, (uint256(p.notional) * ratio) / BPS, true);
         }
 
         emit Tripped(markBps_, outflowBps_, observedAt_, block.timestamp, originChainId_, originTxHash_, ratio);
@@ -276,12 +317,26 @@ contract RiftMarket is AbstractPayer {
 
         Policy memory p = Policy({
             buyer: msg.sender,
-            notional: SafeCast.toUint128(notional_),
+            activeAt: SafeCast.toUint64(block.timestamp + coverDelay),
             expiry: SafeCast.toUint64(block.timestamp + duration_),
-            settled: false
+            settled: false,
+            notional: SafeCast.toUint128(notional_),
+            premium: SafeCast.toUint128(premium),
+            owed: 0
         });
         id = _storePolicy(p);
-        emit ProtectionBought(id, msg.sender, notional_, premium, p.expiry);
+        emit ProtectionBought(id, msg.sender, notional_, premium, p.activeAt, p.expiry);
+    }
+
+    /// @notice Pay out a settled policy's payout or refund. Anyone can call it; funds always go to the buyer.
+    function claim(uint256 id_) external returns (uint256 amount) {
+        Policy storage p = _policies[id_];
+        amount = p.owed;
+        if (amount == 0) revert NothingToClaim();
+        p.owed = 0;
+        totalOwed -= amount;
+        collateral.safeTransfer(p.buyer, amount);
+        emit Claimed(id_, p.buyer, amount);
     }
 
     function quotePremium(uint256 notional_, uint256 duration_) public view returns (uint256) {
@@ -412,12 +467,20 @@ contract RiftMarket is AbstractPayer {
         emit PositionClosed(trader_, pnl, funding, payout, liquidated_);
     }
 
+    function _settle(uint256 id_, Policy storage p_, uint256 owed_, bool covered_) internal {
+        p_.settled = true;
+        p_.owed = SafeCast.toUint128(owed_);
+        poolAssets -= owed_;
+        totalOwed += owed_;
+        emit PolicySettled(id_, p_.buyer, owed_, covered_);
+    }
+
     function _storePolicy(Policy memory p_) internal returns (uint256) {
         uint256 n = _policies.length;
-        // Reuse a settled or expired slot before growing the array.
+        // Reuse an expired, never-settled slot, or a settled one that has been claimed, before growing the array.
         for (uint256 i; i < n; ++i) {
             Policy memory old = _policies[i];
-            if (old.settled || old.expiry < block.timestamp) {
+            if ((!old.settled && old.expiry < block.timestamp) || (old.settled && old.owed == 0)) {
                 _policies[i] = p_;
                 return i;
             }

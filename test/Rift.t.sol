@@ -22,6 +22,8 @@ contract RiftTest is Test {
 
     uint256 internal constant SYNC = uint256(keccak256("Sync(uint112,uint112)"));
     uint256 internal constant TRANSFER = uint256(keccak256("Transfer(address,address,uint256)"));
+    uint256 internal constant TRIPPED =
+        uint256(keccak256("Tripped(int256,uint256,uint256,uint256,uint256,uint256,uint256)"));
 
     address internal poolBase = makeAddr("poolBase");
     address internal poolUni = makeAddr("poolUni");
@@ -81,7 +83,7 @@ contract RiftTest is Test {
     // ---------------------------------------------------------------- reactive side
 
     function test_subscriptions() public view {
-        assertEq(MockSystem(payable(SYSTEM)).subsCount(), 4);
+        assertEq(MockSystem(payable(SYSTEM)).subsCount(), 5); // 2 Sync, 2 vault Transfer, 1 market Tripped
     }
 
     function test_firstSyncPairSendsMark() public {
@@ -145,8 +147,9 @@ contract RiftTest is Test {
         _deliverAll();
 
         vm.prank(buyer);
-        market.buyProtection(10_000e18, 1 days);
+        uint256 id = market.buyProtection(10_000e18, 1 days);
         uint256 before = usd.balanceOf(buyer);
+        vm.warp(block.timestamp + market.coverDelay()); // coverage is live
 
         // Exploit: vault drained and loot dumped on Base -> Base price collapses.
         _transfer(vault, attacker, 300_000e18); // 30% outflow
@@ -159,8 +162,163 @@ contract RiftTest is Test {
 
         _deliverAll();
         assertTrue(market.tripped());
-        assertEq(usd.balanceOf(buyer) - before, 10_000e18, "paid in full, same tx as the callback");
         assertEq(market.payoutRatioBps(), 10_000);
+        assertEq(market.policy(id).owed, 10_000e18, "payout fixed by the trip callback");
+
+        market.claim(id); // anyone can trigger it; funds go to the buyer
+        assertEq(usd.balanceOf(buyer) - before, 10_000e18, "paid in full");
+        assertEq(market.totalOwed(), 0);
+    }
+
+    // ---------------------------------------------------------------- fix 1: cover waiting period
+
+    function test_policyBoughtInsideCoverDelayIsRefundedNotPaid() public {
+        address late = makeAddr("late");
+        _fund(late, 1_000e18);
+
+        vm.prank(buyer);
+        uint256 early = market.buyProtection(10_000e18, 1 days);
+        vm.warp(block.timestamp + market.coverDelay());
+
+        // The drain is public on Base; someone buys cover seconds before the trip lands.
+        uint256 lateBefore = usd.balanceOf(late);
+        vm.prank(late);
+        uint256 lateId = market.buyProtection(50_000e18, 1 days);
+        uint256 premium = lateBefore - usd.balanceOf(late);
+        assertGt(premium, 0);
+
+        _forceTrip();
+
+        RiftMarket.Policy memory pe = market.policy(early);
+        RiftMarket.Policy memory pl = market.policy(lateId);
+        assertEq(pe.owed, 10_000e18, "covered policy paid");
+        assertEq(pl.owed, premium, "late policy only gets its premium back");
+        assertEq(market.payoutRatioBps(), 10_000, "late notional doesn't dilute covered buyers");
+
+        market.claim(lateId);
+        assertEq(usd.balanceOf(late), lateBefore, "late buyer made whole, no payout");
+    }
+
+    function test_coverDelayIsBoundedAndNotRetroactive() public {
+        vm.expectRevert(RiftMarket.BadCoverDelay.selector);
+        market.setCoverDelay(2 hours);
+
+        vm.prank(buyer);
+        uint256 id = market.buyProtection(10_000e18, 1 days);
+        uint64 activeAt = market.policy(id).activeAt;
+        assertEq(activeAt, block.timestamp + 10 minutes);
+
+        market.setCoverDelay(0);
+        assertEq(market.policy(id).activeAt, activeAt, "existing policy keeps its start");
+
+        _forceTrip(); // trip observed now, before the policy's start
+        assertEq(market.policy(id).owed, market.policy(id).premium, "still refunded, not paid");
+    }
+
+    // ---------------------------------------------------------------- fix 3: pull payouts + trip retry
+
+    function test_claimIsOneShotAndBlocksDemoReset() public {
+        vm.prank(buyer);
+        uint256 id = market.buyProtection(10_000e18, 1 days);
+        vm.warp(block.timestamp + market.coverDelay());
+        _forceTrip();
+
+        vm.expectRevert(RiftMarket.UnclaimedPayouts.selector);
+        market.resetDemo();
+
+        vm.prank(attacker); // a third party can push the claim; it still pays the buyer
+        market.claim(id);
+        assertEq(usd.balanceOf(buyer), 1_000e18 - market.policy(id).premium + 10_000e18);
+
+        vm.expectRevert(RiftMarket.NothingToClaim.selector);
+        market.claim(id);
+
+        market.resetDemo(); // fine once everything is claimed
+        assertFalse(market.tripped());
+    }
+
+    function test_tripSucceedsWhenOneBuyerCannotReceive() public {
+        BlockingToken btk = new BlockingToken();
+        RiftMarket m = new RiftMarket(IPayable(payable(proxy)), IERC20(address(btk)));
+        m.setReactive(address(rx));
+        btk.mint(address(this), 100_000e18);
+        btk.approve(address(m), type(uint256).max);
+        m.deposit(100_000e18);
+
+        address blocked = makeAddr("blocked");
+        uint256[2] memory ids;
+        address[2] memory buyers = [blocked, buyer];
+        for (uint256 i; i < 2; ++i) {
+            btk.mint(buyers[i], 1_000e18);
+            vm.startPrank(buyers[i]);
+            btk.approve(address(m), type(uint256).max);
+            ids[i] = m.buyProtection(10_000e18, 1 days);
+            vm.stopPrank();
+        }
+        vm.warp(block.timestamp + m.coverDelay());
+        btk.setBlocked(blocked, true);
+
+        vm.prank(proxy);
+        m.trip(address(rx), 900, 3000, block.timestamp, BASE, 0); // no transfers here, so it can't revert
+        assertTrue(m.tripped());
+
+        m.claim(ids[1]);
+        assertEq(btk.balanceOf(buyer), 1_000e18 - m.policy(ids[1]).premium + 10_000e18);
+
+        vm.expectRevert(BlockingToken.Blocked.selector);
+        m.claim(ids[0]); // only the blocked buyer's own claim fails
+        assertEq(m.policy(ids[0]).owed, 10_000e18, "still owed, claimable once unblocked");
+    }
+
+    function test_tripIsResentUntilMarketConfirms() public {
+        _driveToTrip();
+        uint256 first = _callbacks();
+        assertEq(rx.tripsSent(), 1);
+
+        // Callback lost: no confirmation. A later event inside the retry interval doesn't resend...
+        vm.warp(block.timestamp + 10);
+        _transfer(vault, attacker, 1e18);
+        assertEq(_callbacks(), first);
+
+        // ...but one after it does, with the original trip data.
+        vm.warp(block.timestamp + rx.TRIP_RETRY_SECONDS());
+        _transfer(vault, attacker, 1e18);
+        assertEq(_callbacks(), first + 1);
+        assertEq(rx.tripsSent(), 2);
+
+        _deliverAll(); // first delivery trips the market; the duplicate is a no-op
+        assertTrue(market.tripped());
+
+        // A Tripped log from the wrong chain or contract is not a confirmation.
+        _trippedLog(BASE, address(market));
+        _trippedLog(UNI, attacker);
+        assertFalse(rx.tripConfirmed());
+
+        _trippedLog(UNI, address(market));
+        assertTrue(rx.tripConfirmed());
+
+        vm.warp(block.timestamp + rx.TRIP_RETRY_SECONDS() + 1);
+        _transfer(vault, attacker, 1e18);
+        assertEq(_callbacks(), first + 1, "no resend after confirmation");
+    }
+
+    // ---------------------------------------------------------------- fix 4: out-of-order marks
+
+    function test_olderMarkDoesNotOverwriteNewer() public {
+        uint256 t = block.timestamp;
+        vm.prank(proxy);
+        market.updateMark(address(rx), 300, t, BASE, 0);
+
+        vm.expectEmit(address(market));
+        emit RiftMarket.StaleMarkIgnored(100, t - 5, t);
+        vm.prank(proxy);
+        market.updateMark(address(rx), 100, t - 5, BASE, 0); // delivered late
+        assertEq(market.markBps(), 300);
+        assertEq(market.markObservedAt(), t);
+
+        vm.prank(proxy);
+        market.updateMark(address(rx), 250, t, BASE, 0); // same observation second still applies
+        assertEq(market.markBps(), 250);
     }
 
     function test_tripIsIdempotentAndBlocksNewBusiness() public {
@@ -290,6 +448,23 @@ contract RiftTest is Test {
         }
     }
 
+    function _trippedLog(uint256 chainId, address emitter) internal {
+        vm.prank(SYSTEM);
+        rx.react(_log(chainId, emitter, TRIPPED, 0, 0, 1, abi.encode(int256(0), 0, 0, 0, 0, 0, 0)));
+    }
+
+    /// @dev Same breach as test_drainTripsAndPaysProtection, without delivering the trip callback.
+    function _driveToTrip() internal {
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        _sync(UNI, poolUni, 1_000e18, 2_000e18);
+        _deliverAll();
+        _transfer(vault, attacker, 300_000e18);
+        _sync(BASE, poolBase, 1_400e18, 1_500e18);
+        vm.warp(block.timestamp + 2);
+        _transfer(vault, attacker, 50_000e18);
+        assertTrue(rx.tripped());
+    }
+
     function _pushMark(int256 bps) internal {
         vm.prank(proxy);
         market.updateMark(address(rx), bps, block.timestamp, BASE, 0);
@@ -300,5 +475,23 @@ contract RiftTest is Test {
         market.trip(address(rx), 900, 3000, block.timestamp, BASE, 0);
         vm.prank(proxy);
         market.trip(address(rx), 900, 3000, block.timestamp, BASE, 0); // no-op
+    }
+}
+
+/// @notice Collateral that can refuse transfers to one address, like a USDC-style blocklist.
+contract BlockingToken is MockToken {
+    mapping(address account => bool blocked) public blocked;
+
+    error Blocked();
+
+    constructor() MockToken("Blocking USD", "bUSD") {}
+
+    function setBlocked(address account_, bool blocked_) external {
+        blocked[account_] = blocked_;
+    }
+
+    function _update(address from_, address to_, uint256 value_) internal override {
+        if (blocked[to_]) revert Blocked();
+        super._update(from_, to_, value_);
     }
 }
