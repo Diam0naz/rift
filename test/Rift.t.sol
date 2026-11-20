@@ -410,6 +410,93 @@ contract RiftTest is Test {
         assertEq(id, market.MAX_POLICIES(), "next fresh id, not a recycled slot");
     }
 
+    // ---------------------------------------------------------------- premium pricing
+
+    function test_premiumAtLowUtilizationIsNearBaseRate() public {
+        _pushMark(0);
+        // 10k of cover on a 100k pool: u goes 0 -> 0.1. Area = 10*0.1 + 10*0.1^2/(2*0.8) = 1.0625 bps-days per unit.
+        assertApproxEqAbs(market.quotePremium(10_000e18, 1 days), 10.625e18, 1e3);
+        assertApproxEqAbs(market.quotePremium(10_000e18, 2 days), 21.25e18, 1e3, "linear in duration");
+    }
+
+    function test_premiumRateKinksUpAtHighUtilization() public view {
+        assertEq(market.premiumRateBpsPerDay(0), 10);
+        assertEq(market.premiumRateBpsPerDay(0.4e18), 15);
+        assertEq(market.premiumRateBpsPerDay(0.8e18), 20, "kink");
+        assertEq(market.premiumRateBpsPerDay(0.9e18), 120, "steep past the kink");
+        assertEq(market.premiumRateBpsPerDay(1e18), 220);
+    }
+
+    function test_coverGetsDearerAsThePoolFillsUp() public {
+        _pushMark(0);
+        _fund(buyer, 1_000_000e18);
+        uint256 first = market.quotePremium(10_000e18, 1 days);
+        uint256 last;
+        for (uint256 i; i < 9; ++i) {
+            uint256 q = market.quotePremium(10_000e18, 1 days);
+            assertGt(q, last, "each 10% slice costs more than the one before");
+            last = q;
+            vm.prank(buyer);
+            market.buyProtection(10_000e18, 1 days);
+        }
+        // Premiums don't count as capacity, so u is exactly 0.9 here. The last slice (0.9 -> 1.0) pays
+        // 10*0.1 + 10*0.1 + 200*(0.2^2 - 0.1^2)/(2*0.2) = 17 bps-days per unit: 170 on 100k.
+        assertEq(market.utilizationWad(), 0.9e18);
+        uint256 top = market.quotePremium(10_000e18, 1 days);
+        assertApproxEqAbs(top, 170e18, 1e3);
+        assertGt(top, 15 * first, "the last slice costs ~16x the first");
+    }
+
+    function testFuzz_splittingAnOrderIsNotCheaper(uint256 a, uint256 b, uint256 duration) public {
+        _pushMark(0);
+        a = bound(a, 1e18, 50_000e18);
+        b = bound(b, 1e18, 45_000e18);
+        duration = bound(duration, market.MIN_DURATION(), market.MAX_DURATION());
+        _fund(buyer, 10_000_000e18);
+
+        uint256 whole = market.quotePremium(a + b, duration);
+        uint256 before = usd.balanceOf(buyer);
+        vm.startPrank(buyer);
+        market.buyProtection(a, duration);
+        market.buyProtection(b, duration);
+        vm.stopPrank();
+        uint256 split = before - usd.balanceOf(buyer);
+        assertGe(split + 2, whole, "two halves cost at least the whole (up to rounding)");
+        assertApproxEqRel(split, whole, 1e12, "and essentially the same");
+    }
+
+    function test_spreadStressLoadsThePremium() public {
+        _pushMark(0);
+        uint256 calm = market.quotePremium(10_000e18, 1 days);
+        _pushMark(250); // half the stress scale
+        assertEq(market.stressMultiplierBps(), 15_000);
+        assertApproxEqAbs(market.quotePremium(10_000e18, 1 days), calm * 3 / 2, 1e3);
+        _pushMark(-5_000); // way past the scale: capped at 3x
+        assertEq(market.stressMultiplierBps(), 30_000);
+        assertApproxEqAbs(market.quotePremium(10_000e18, 1 days), calm * 3, 1e3);
+    }
+
+    function test_premiumParamsAreBounded() public {
+        RiftMarket.PremiumParams memory p = RiftMarket.PremiumParams({
+            baseBpsPerDay: 10, slope1BpsPerDay: 10, slope2BpsPerDay: 200, kinkWad: 1e18, stressSpreadBps: 500
+        });
+        vm.expectRevert(RiftMarket.BadPremiumParams.selector);
+        market.setPremiumParams(p); // kink must be < 100%
+        p.kinkWad = 0.5e18;
+        p.slope2BpsPerDay = 5_000;
+        vm.expectRevert(RiftMarket.BadPremiumParams.selector);
+        market.setPremiumParams(p); // slope above 10%/day
+        p.slope2BpsPerDay = 300;
+        market.setPremiumParams(p);
+        (,, uint64 slope2, uint64 kink,) = market.premiumParams();
+        assertEq(slope2, 300);
+        assertEq(kink, 0.5e18);
+
+        vm.prank(attacker);
+        vm.expectRevert(RiftMarket.NotOwner.selector);
+        market.setPremiumParams(p);
+    }
+
     // ---------------------------------------------------------------- full loop
 
     function test_drainTripsAndPaysProtection() public {

@@ -61,6 +61,17 @@ The trip already needs a real drain, but the perp mark comes straight from pool 
 - **Time-weighted mark.** The mark sent to the perp is a continuous-time moving average of the spread (`markSmoothingSeconds`, default 30 s). Each spread is weighted by how long it actually held, so a price pushed and put back within one Reactive second moves the mark by nothing, and a move has to persist to reach the mark. The trip still uses the raw spread, because the trip settles at the crash level, and the outflow condition already guards it.
 - **Thin-pool guard.** A `Sync` whose token1 reserve is below `minQuoteReserve` is ignored, and the pool's last good price is kept (`ThinPoolIgnored`).
 
+### Premium pricing
+
+A flat premium sells cover cheaply exactly when it's most dangerous: when the pool is nearly fully committed, or when the spread already shows stress. It also lets anyone buy up all the capacity cheaply and lock other buyers out. So the premium responds to both:
+
+- **Utilization curve.** The daily rate for the marginal unit of cover depends on utilization `u` (live notional / capacity). It rises gently up to a kink (default: 0.10%/day idle, 0.20%/day at 80%) and steeply after it (2.20%/day at 100%).
+- **Priced as a cost function.** A purchase pays the area under the rate curve from the utilization before it to the utilization after it, times duration. That's the LMSR idea applied to pool capacity: the price depends only on where you start and end, so splitting an order into pieces costs the same as buying it at once (a fuzz test checks this). Capacity is pool cash *minus the premiums of live policies*, so a purchase's own premium doesn't make the next slice cheaper.
+- **Stress loading.** The premium is multiplied by `1 + |mark| / stressSpreadBps` (default 500 bps, the trip threshold), capped at 3x. Cover bought while the spread is already wide costs more.
+- `quotePremium(notional, duration)` returns the exact price; `premiumRateBpsPerDay(u)`, `utilizationWad()` and `stressMultiplierBps()` expose the parts. The owner can tune the curve with `setPremiumParams` within hard bounds (each term ≤ 10%/day, kink strictly between 0 and 100%).
+
+Example on a 100k pool with no stress: the first 10k of one-day cover costs 10.63, and the last 10k (90% → 100%) costs 170, about 16x as much.
+
 ### Underwriting accounting
 
 - **Shares priced at pool value.** `deposit` and `completeWithdraw` price shares at `poolValue()`: the pool's cash minus traders' unrealized perp PnL net of funding (`tradersUnrealizedPnl()`). A newcomer can't buy into gains the pool hasn't realized yet, and a leaver can't exit before a loss lands. The total comes from running sums of open positions (size × entry mark, size × entry funding), so it costs the same however many positions are open. Rounding always favours the holders who stay.
@@ -170,7 +181,7 @@ What the run showed (2026-11-20). This run used the contracts deployed above, wh
 forge test -vv
 ```
 
-- **Unit tests** (`test/Rift.t.sol`): the full loop in one EVM. Fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, out-of-order marks, the time-weighted mark, the thin-pool guard, the liveness guard, share pricing with open perp PnL, delayed withdrawals, the liquidation reward and stable policy ids.
+- **Unit tests** (`test/Rift.t.sol`): the full loop in one EVM. Fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, out-of-order marks, the time-weighted mark, the thin-pool guard, the liveness guard, share pricing with open perp PnL, delayed withdrawals, the liquidation reward, stable policy ids, and premium pricing (curve values, rising cost as the pool fills, stress loading, parameter bounds, and a fuzz test that splitting an order is never cheaper).
 - **Invariant fuzzing** (`test/invariant/`): random sequences of deposits, withdrawal requests, completions and cancellations, cover purchases, positions, liquidations, marks, trips, claims and time jumps (256 runs × 500 calls). Checked after every call:
   - the market's collateral covers `poolAssets + totalMargin + totalOwed`;
   - a trip never commits more than the pool held;

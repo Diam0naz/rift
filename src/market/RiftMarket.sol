@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AbstractPayer} from "@reactive/base/AbstractPayer.sol";
 import {IPayable} from "@reactive/interfaces/IPayable.sol";
 
@@ -42,6 +43,10 @@ contract RiftMarket is AbstractPayer {
     /// @dev funding owed = size * Δ(cumulative bps·seconds) / FUNDING_DENOM
     ///      -> a 100 bps spread held for one day costs the paying side 1% of size.
     uint256 public constant FUNDING_DENOM = BPS * 1 days;
+    uint256 internal constant WAD = 1e18;
+    /// @dev Upper bounds on owner-set pricing parameters.
+    uint256 public constant MAX_RATE_BPS_PER_DAY = 1_000; // 10%/day for any one curve term
+    uint256 public constant MAX_STRESS_MULTIPLIER_BPS = 30_000; // stress can at most triple the premium
 
     // ---------------------------------------------------------------- types
 
@@ -55,6 +60,23 @@ contract RiftMarket is AbstractPayer {
         uint128 notional;
         uint128 premium;
         uint128 owed; // set by trip(): payout if covered, premium refund if still waiting; paid out by claim()
+    }
+
+    /// @notice Premium curve. The daily rate for the marginal unit of cover depends on utilization
+    ///         u = active notional / pool cash (in WAD):
+    ///         Capacity is pool cash minus premiums of live policies, so buying cover doesn't enlarge the
+    ///         capacity it's priced against.
+    ///           u <= kink: rate = base + slope1 * u / kink
+    ///           u >  kink: rate = base + slope1 + slope2 * (u - kink) / (1 - kink)
+    ///         A purchase pays the integral of the rate from u before to u after, so splitting an order
+    ///         doesn't make it cheaper (an LMSR-style cost function on pool capacity). The result is
+    ///         scaled up by spread stress: x(1 + |mark| / stressSpreadBps), capped at MAX_STRESS_MULTIPLIER_BPS.
+    struct PremiumParams {
+        uint64 baseBpsPerDay; // rate at zero utilization
+        uint64 slope1BpsPerDay; // added between 0 and the kink
+        uint64 slope2BpsPerDay; // added between the kink and full utilization
+        uint64 kinkWad; // utilization where the steep part starts, in (0, 1e18)
+        uint64 stressSpreadBps; // |mark| at which the premium doubles; 0 = no stress loading
     }
 
     struct WithdrawRequest {
@@ -77,7 +99,13 @@ contract RiftMarket is AbstractPayer {
     address public immutable owner;
     address public reactive; // RiftReactive on Lasna, set once after it is deployed
 
-    uint256 public premiumBpsPerDay = 10; // 0.10% of notional per day
+    PremiumParams public premiumParams = PremiumParams({
+        baseBpsPerDay: 10, // 0.10%/day when the pool is idle
+        slope1BpsPerDay: 10, // 0.20%/day at the kink
+        slope2BpsPerDay: 200, // 2.20%/day when fully committed
+        kinkWad: 0.8e18,
+        stressSpreadBps: 500 // premium doubles at a 5% spread, the default trip threshold
+    });
     /// @notice Waiting period before a new policy covers anything. A drain on the origin chain is public
     ///         seconds before the trip lands here; without this, anyone could buy cover after the fact.
     uint256 public coverDelay = 10 minutes;
@@ -124,7 +152,7 @@ contract RiftMarket is AbstractPayer {
     // ---------------------------------------------------------------- events
 
     event ReactiveSet(address reactive);
-    event PremiumUpdated(uint256 premiumBpsPerDay);
+    event PremiumParamsUpdated(PremiumParams params);
     event CoverDelayUpdated(uint256 coverDelay);
     event MaxMarkAgeUpdated(uint256 maxMarkAge);
     event Deposited(address indexed user, uint256 assets, uint256 shares);
@@ -177,6 +205,7 @@ contract RiftMarket is AbstractPayer {
     error NothingToClaim();
     error UnclaimedPayouts();
     error PoolInsolvent();
+    error BadPremiumParams();
     error WithdrawPending();
     error NoWithdrawRequest();
     error WithdrawLocked(uint256 unlockAt);
@@ -225,9 +254,13 @@ contract RiftMarket is AbstractPayer {
         emit ReactiveSet(reactive_);
     }
 
-    function setPremiumBpsPerDay(uint256 bps_) external onlyOwner {
-        premiumBpsPerDay = bps_;
-        emit PremiumUpdated(bps_);
+    function setPremiumParams(PremiumParams calldata p_) external onlyOwner {
+        if (
+            p_.kinkWad == 0 || p_.kinkWad >= WAD || p_.baseBpsPerDay == 0 || p_.baseBpsPerDay > MAX_RATE_BPS_PER_DAY
+                || p_.slope1BpsPerDay > MAX_RATE_BPS_PER_DAY || p_.slope2BpsPerDay > MAX_RATE_BPS_PER_DAY
+        ) revert BadPremiumParams();
+        premiumParams = p_;
+        emit PremiumParamsUpdated(p_);
     }
 
     function setCoverDelay(uint256 delay_) external onlyOwner {
@@ -434,8 +467,38 @@ contract RiftMarket is AbstractPayer {
         emit Claimed(id_, p.buyer, amount);
     }
 
+    /// @notice Premium for `notional_` of cover over `duration_` seconds at the current utilization and mark.
     function quotePremium(uint256 notional_, uint256 duration_) public view returns (uint256) {
-        return (notional_ * premiumBpsPerDay * duration_) / (BPS * 1 days);
+        (uint256 n0, uint256 capacity) = _coverAndCapacity();
+        if (capacity == 0) revert InsufficientLiquidity();
+        uint256 u0 = Math.mulDiv(n0, WAD, capacity);
+        uint256 u1 = Math.mulDiv(n0 + notional_, WAD, capacity, Math.Rounding.Ceil);
+        // ∫ rate du is in bps/day * WAD; times capacity gives bps/day * notional * WAD.
+        uint256 area = _rateIntegral(u1) - _rateIntegral(u0);
+        uint256 premium = Math.mulDiv(area, capacity * duration_, WAD * BPS * 1 days, Math.Rounding.Ceil);
+        return Math.mulDiv(premium, stressMultiplierBps(), BPS, Math.Rounding.Ceil);
+    }
+
+    /// @notice Daily premium rate, in bps of notional, for the marginal unit of cover at utilization `u_` (WAD).
+    function premiumRateBpsPerDay(uint256 u_) public view returns (uint256) {
+        PremiumParams memory p = premiumParams;
+        if (u_ <= p.kinkWad) return p.baseBpsPerDay + (uint256(p.slope1BpsPerDay) * u_) / p.kinkWad;
+        return p.baseBpsPerDay + p.slope1BpsPerDay + (uint256(p.slope2BpsPerDay) * (u_ - p.kinkWad)) / (WAD - p.kinkWad);
+    }
+
+    /// @notice Current utilization of pool cash by live cover, in WAD.
+    function utilizationWad() public view returns (uint256) {
+        (uint256 cover, uint256 capacity) = _coverAndCapacity();
+        return capacity == 0 ? 0 : Math.mulDiv(cover, WAD, capacity);
+    }
+
+    /// @notice Premium multiplier from spread stress, in bps (10_000 = none).
+    function stressMultiplierBps() public view returns (uint256) {
+        uint256 scale = premiumParams.stressSpreadBps;
+        if (scale == 0) return BPS;
+        uint256 absMark = markBps >= 0 ? uint256(markBps) : uint256(-markBps);
+        uint256 m = BPS + (absMark * BPS) / scale;
+        return m > MAX_STRESS_MULTIPLIER_BPS ? MAX_STRESS_MULTIPLIER_BPS : m;
     }
 
     // ================================================================ spread perp
@@ -527,11 +590,7 @@ contract RiftMarket is AbstractPayer {
     }
 
     function activeNotional() public view returns (uint256 total) {
-        uint256 n = _activeIds.length;
-        for (uint256 i; i < n; ++i) {
-            Policy storage p = _policies[_activeIds[i]];
-            if (!p.settled && p.expiry >= block.timestamp) total += p.notional;
-        }
+        (total,) = _liveCover();
     }
 
     /// @notice Liquidity that must stay in the pool: live coverage + net perp exposure.
@@ -624,6 +683,38 @@ contract RiftMarket is AbstractPayer {
         poolAssets -= owed_;
         totalOwed += owed_;
         emit PolicySettled(id_, p_.buyer, owed_, covered_);
+    }
+
+    /// @dev Notional and premiums of policies that are live now.
+    function _liveCover() internal view returns (uint256 notional, uint256 premiums) {
+        uint256 n = _activeIds.length;
+        for (uint256 i; i < n; ++i) {
+            Policy storage p = _policies[_activeIds[i]];
+            if (!p.settled && p.expiry >= block.timestamp) {
+                notional += p.notional;
+                premiums += p.premium;
+            }
+        }
+    }
+
+    /// @dev Live notional, and the capacity premiums are priced against: pool cash minus live premiums.
+    function _coverAndCapacity() internal view returns (uint256 cover, uint256 capacity) {
+        uint256 premiums;
+        (cover, premiums) = _liveCover();
+        capacity = poolAssets > premiums ? poolAssets - premiums : 0;
+    }
+
+    /// @dev ∫_0^u rate(x) dx, in (bps/day) * WAD. The steep segment continues past u = 1, which a purchase
+    ///      can only touch by its own premium's worth before the capacity check rejects it.
+    function _rateIntegral(uint256 u_) internal view returns (uint256) {
+        PremiumParams memory p = premiumParams;
+        uint256 k = p.kinkWad;
+        if (u_ <= k) {
+            return p.baseBpsPerDay * u_ + Math.mulDiv(uint256(p.slope1BpsPerDay) * u_, u_, 2 * k);
+        }
+        uint256 d = u_ - k;
+        return p.baseBpsPerDay * u_ + (uint256(p.slope1BpsPerDay) * k) / 2 + uint256(p.slope1BpsPerDay) * d
+            + Math.mulDiv(uint256(p.slope2BpsPerDay) * d, d, 2 * (WAD - k));
     }
 
     /// @dev Drop expired policies from the active list (swap-and-pop). Their data stays readable by id.
