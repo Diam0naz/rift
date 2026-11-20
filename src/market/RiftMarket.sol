@@ -27,6 +27,8 @@ contract RiftMarket is AbstractPayer {
     uint256 public constant BPS = 10_000;
     uint256 public constant MAX_POLICIES = 64; // bounded so trip() can settle everyone in one callback
     uint256 public constant MAX_COVER_DELAY = 1 hours;
+    uint256 public constant MIN_MARK_AGE_LIMIT = 5 minutes;
+    uint256 public constant MAX_MARK_AGE_LIMIT = 1 days;
     uint256 public constant MIN_DURATION = 60;
     uint256 public constant MAX_DURATION = 30 days;
     uint256 public constant MAX_LEVERAGE = 10;
@@ -68,6 +70,10 @@ contract RiftMarket is AbstractPayer {
     /// @notice Waiting period before a new policy covers anything. A drain on the origin chain is public
     ///         seconds before the trip lands here; without this, anyone could buy cover after the fact.
     uint256 public coverDelay = 10 minutes;
+    /// @notice Liveness guard: no new cover or positions if the last mark landed longer ago than this.
+    ///         RiftReactive sends a heartbeat mark at least every `markHeartbeat` (driven by its cron), so
+    ///         silence means the Reactive side is down or unfunded - and then a drain could never trip.
+    uint256 public maxMarkAge = 1 hours;
 
     // Underwriting pool
     uint256 public poolAssets;
@@ -101,6 +107,7 @@ contract RiftMarket is AbstractPayer {
     event ReactiveSet(address reactive);
     event PremiumUpdated(uint256 premiumBpsPerDay);
     event CoverDelayUpdated(uint256 coverDelay);
+    event MaxMarkAgeUpdated(uint256 maxMarkAge);
     event Deposited(address indexed user, uint256 assets, uint256 shares);
     event Withdrawn(address indexed user, uint256 assets, uint256 shares);
     event MarkUpdated(
@@ -143,6 +150,8 @@ contract RiftMarket is AbstractPayer {
     error TooMuchLeverage();
     error NotLiquidatable();
     error BadCoverDelay();
+    error BadMaxMarkAge();
+    error StaleMark(uint256 age);
     error NothingToClaim();
     error UnclaimedPayouts();
 
@@ -162,6 +171,14 @@ contract RiftMarket is AbstractPayer {
 
     modifier notTripped() {
         if (tripped) revert IsTripped();
+        _;
+    }
+
+    /// @dev New risk is only taken while the Reactive side is provably alive.
+    modifier live() {
+        if (markReceivedAt == 0) revert NoMark();
+        uint256 age = block.timestamp - markReceivedAt;
+        if (age > maxMarkAge) revert StaleMark(age);
         _;
     }
 
@@ -190,6 +207,12 @@ contract RiftMarket is AbstractPayer {
         if (delay_ > MAX_COVER_DELAY) revert BadCoverDelay();
         coverDelay = delay_; // applies to policies bought from now on; existing ones keep their activeAt
         emit CoverDelayUpdated(delay_);
+    }
+
+    function setMaxMarkAge(uint256 age_) external onlyOwner {
+        if (age_ < MIN_MARK_AGE_LIMIT || age_ > MAX_MARK_AGE_LIMIT) revert BadMaxMarkAge();
+        maxMarkAge = age_;
+        emit MaxMarkAgeUpdated(age_);
     }
 
     /// @notice Pay outstanding callback debt to the proxy from this contract's native balance.
@@ -253,7 +276,7 @@ contract RiftMarket is AbstractPayer {
         // external calls: one buyer that can't receive tokens must not be able to revert the whole trip.
         // Pass 1: policies still in their waiting period are voided and refunded their premium.
         uint256 n = _policies.length;
-        uint256 live;
+        uint256 coveredNotional = 0;
         for (uint256 i; i < n; ++i) {
             Policy storage p = _policies[i];
             if (p.settled || p.expiry < observedAt_) continue;
@@ -261,17 +284,22 @@ contract RiftMarket is AbstractPayer {
                 uint256 refund = p.premium <= poolAssets ? p.premium : poolAssets;
                 _settle(i, p, refund, false);
             } else {
-                live += p.notional;
+                coveredNotional += p.notional;
             }
         }
 
         // Pass 2: covered policies get their notional, pro-rata if the pool can't cover all of them.
-        uint256 ratio = live == 0 || poolAssets >= live ? BPS : (poolAssets * BPS) / live;
+        // Each payout is computed from the pool snapshot in one step (no rounded ratio in between),
+        // so the sum of payouts never exceeds the pool. payoutRatioBps is informational.
+        uint256 available = poolAssets;
+        bool full = coveredNotional <= available;
+        uint256 ratio = full ? BPS : (available * BPS) / coveredNotional;
         payoutRatioBps = ratio;
         for (uint256 i; i < n; ++i) {
             Policy storage p = _policies[i];
             if (p.settled || p.expiry < observedAt_) continue;
-            _settle(i, p, (uint256(p.notional) * ratio) / BPS, true);
+            uint256 notional = p.notional;
+            _settle(i, p, full ? notional : (notional * available) / coveredNotional, true);
         }
 
         emit Tripped(markBps_, outflowBps_, observedAt_, block.timestamp, originChainId_, originTxHash_, ratio);
@@ -304,7 +332,7 @@ contract RiftMarket is AbstractPayer {
     // ================================================================ drain default swap
 
     /// @notice Buy drain protection: pays `notional_` if the vault is drained before `now + duration_`.
-    function buyProtection(uint256 notional_, uint256 duration_) external notTripped returns (uint256 id) {
+    function buyProtection(uint256 notional_, uint256 duration_) external notTripped live returns (uint256 id) {
         if (notional_ == 0) revert ZeroAmount();
         if (duration_ < MIN_DURATION || duration_ > MAX_DURATION) revert BadDuration();
 
@@ -345,8 +373,7 @@ contract RiftMarket is AbstractPayer {
 
     // ================================================================ spread perp
 
-    function openPosition(bool isLong_, uint256 size_, uint256 margin_) external notTripped {
-        if (markObservedAt == 0) revert NoMark();
+    function openPosition(bool isLong_, uint256 size_, uint256 margin_) external notTripped live {
         if (size_ == 0 || margin_ == 0) revert ZeroAmount();
         if (positions[msg.sender].open) revert PositionExists();
         if (size_ > margin_ * MAX_LEVERAGE) revert TooMuchLeverage();

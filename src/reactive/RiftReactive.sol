@@ -57,8 +57,10 @@ contract RiftReactive is AbstractReactive {
         uint256 sustainSeconds; // how long the breach must last
         uint256 windowSeconds; // outflow lookback window
         uint256 tripOutflowBps; // outflow share of the vault that counts as a drain
-        uint256 markEpsilonBps; // min spread move before a new mark is pushed
-        uint256 markHeartbeat; // push a mark at least this often (seconds) while it changes at all
+        uint256 markEpsilonBps; // min move of the smoothed mark before a new mark is pushed
+        uint256 markHeartbeat; // push a mark at least this often (seconds), even if unchanged: liveness signal
+        uint256 markSmoothingSeconds; // time constant of the time-weighted mark; 0 = raw spread
+        uint256 minQuoteReserve; // Syncs with a smaller token1 reserve are ignored (thin-pool guard)
     }
 
     struct Outflow {
@@ -100,6 +102,13 @@ contract RiftReactive is AbstractReactive {
     uint256 internal _tripOriginChainId;
     uint256 internal _tripOriginTxHash;
 
+    // Time-weighted mark sent to the perp. Each spread is weighted by how long it actually held, so a
+    // spike pushed and reverted within the same second moves the mark by nothing.
+    int256 public smoothedSpreadBps;
+    int256 internal _heldSpread; // the spread in force since _markUpdatedAt
+    uint256 internal _markUpdatedAt;
+    bool internal _markInitialized;
+
     int256 public lastSentMark;
     uint256 public lastSentAt;
     uint256 public marksSent;
@@ -107,6 +116,7 @@ contract RiftReactive is AbstractReactive {
     // ---------------------------------------------------------------- events
 
     event PriceMirrored(uint256 indexed chainId, uint256 price, uint256 originBlock);
+    event ThinPoolIgnored(uint256 indexed chainId, uint256 reserve1, uint256 originBlock);
     event VaultFlow(bool outflow, uint256 amount, uint256 vaultBalance, uint256 windowOutflow);
     event BreachStarted(int256 spreadBps, uint256 timestamp);
     event BreachCleared(uint256 timestamp);
@@ -115,6 +125,7 @@ contract RiftReactive is AbstractReactive {
         int256 spreadBps, uint256 outflowBps, uint256 observedAt, uint256 originChainId, uint256 originTxHash
     );
     event TripConfirmed(uint256 marketTxHash);
+    event DemoReset(uint256 vaultBalance);
     event ParamsUpdated(Params params);
 
     error NotOwner();
@@ -204,11 +215,13 @@ contract RiftReactive is AbstractReactive {
         tripped = false;
         tripConfirmed = false;
         lastTripSentAt = 0;
+        _markInitialized = false;
         breachSince = 0;
         vaultBalance = vaultBalance_;
         windowOutflow = 0;
         delete _outflows;
         _head = 0;
+        emit DemoReset(vaultBalance_);
     }
 
     /// @notice Settle any debt to the system contract from this contract's balance.
@@ -222,6 +235,11 @@ contract RiftReactive is AbstractReactive {
         if (log_.opCode < 1 || log_.data.length < 64) return;
         (uint112 r0, uint112 r1) = abi.decode(log_.data, (uint112, uint112));
         if (r0 == 0) return;
+        if (r1 < params.minQuoteReserve) {
+            // Too thin to trust: moving it costs little. Keep the last good price for this pool.
+            emit ThinPoolIgnored(log_.chainId, r1, log_.blockNumber);
+            return;
+        }
         uint256 p = (uint256(r1) * 1e18) / r0;
 
         if (log_.chainId == baseChainId && log_.contractAddress == poolBase) {
@@ -294,11 +312,34 @@ contract RiftReactive is AbstractReactive {
             return;
         }
 
-        bool moved = _abs(spread - lastSentMark) >= params.markEpsilonBps;
-        bool stale = spread != lastSentMark && nowTs - lastSentAt >= params.markHeartbeat;
+        // The trip above uses the raw spread (it also needs a real drain); the perp mark is smoothed.
+        int256 mark = _updateSmoothedMark(spread, nowTs);
+        bool moved = _abs(mark - lastSentMark) >= params.markEpsilonBps;
+        bool stale = nowTs - lastSentAt >= params.markHeartbeat;
         if (marksSent == 0 || moved || stale) {
-            _sendMark(spread, nowTs, log_);
+            _sendMark(mark, nowTs, log_);
         }
+    }
+
+    /// @dev Exponential moving average in continuous time: over `dt` seconds the mark moves toward the spread
+    ///      that held during those seconds by min(dt, tau) / tau of the gap. The new spread only starts to count
+    ///      from now on, so a price has to stay put to move the mark.
+    function _updateSmoothedMark(int256 spread_, uint256 now_) internal returns (int256 mark) {
+        uint256 tau = params.markSmoothingSeconds;
+        if (!_markInitialized || tau == 0) {
+            mark = spread_;
+            _markInitialized = true;
+        } else {
+            mark = smoothedSpreadBps;
+            uint256 dt = now_ - _markUpdatedAt;
+            if (dt > 0) {
+                uint256 w = dt < tau ? dt : tau;
+                mark += ((_heldSpread - mark) * int256(w)) / int256(tau);
+            }
+        }
+        smoothedSpreadBps = mark;
+        _heldSpread = spread_;
+        _markUpdatedAt = now_;
     }
 
     function _sendMark(int256 spread_, uint256 nowTs_, LogRecord calldata log_) internal {

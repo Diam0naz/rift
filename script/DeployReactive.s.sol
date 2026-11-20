@@ -9,10 +9,11 @@ import {RiftReactive} from "../src/reactive/RiftReactive.sol";
 contract DeployReactive is Script {
     uint256 internal constant BASE_SEPOLIA = 84532;
     uint256 internal constant UNICHAIN_SEPOLIA = 1301;
-    /// Cron topics from dev.reactive.network/reactive-contracts. Off by default: every tick is billed, and
-    /// Cron10 (~10s) costs ~100 lREACT/day. Swaps and vault transfers already drive marks and trips.
-    /// Opt in with CRON_TOPIC=<topic>, e.g. Cron1000 (~17 min, ~1 lREACT/day):
-    /// 0xe20b31294d84c3661ddc8f423abb9c70310d0cf172aa2714ead78029b325e3f4
+    /// Cron topics from dev.reactive.network/reactive-contracts. Every tick is billed: Cron10 (~10s) costs
+    /// ~100 lREACT/day, Cron1000 (~17 min) ~1 lREACT/day. Default is Cron1000: it drives the mark heartbeat
+    /// the market's liveness check relies on (RiftMarket.maxMarkAge), and trip retries when nothing else
+    /// happens. CRON_TOPIC=0 disables it.
+    uint256 internal constant CRON1000 = 0xe20b31294d84c3661ddc8f423abb9c70310d0cf172aa2714ead78029b325e3f4;
 
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -27,7 +28,7 @@ contract DeployReactive is Script {
             vault: vm.envAddress("VAULT"),
             market: vm.envAddress("MARKET"),
             initialVaultBalance: vm.envUint("VAULT_BAL"),
-            cronTopic: vm.envOr("CRON_TOPIC", uint256(0))
+            cronTopic: vm.envOr("CRON_TOPIC", CRON1000)
         });
 
         RiftReactive.Params memory p = RiftReactive.Params({
@@ -36,7 +37,9 @@ contract DeployReactive is Script {
             windowSeconds: vm.envOr("WINDOW_SECONDS", uint256(300)),
             tripOutflowBps: vm.envOr("TRIP_OUTFLOW_BPS", uint256(1500)),
             markEpsilonBps: vm.envOr("MARK_EPSILON_BPS", uint256(10)),
-            markHeartbeat: vm.envOr("MARK_HEARTBEAT", uint256(60))
+            markHeartbeat: vm.envOr("MARK_HEARTBEAT", uint256(600)),
+            markSmoothingSeconds: vm.envOr("MARK_SMOOTHING_SECONDS", uint256(30)),
+            minQuoteReserve: vm.envOr("MIN_QUOTE_RESERVE", uint256(1_000e18))
         });
 
         vm.startBroadcast(pk);

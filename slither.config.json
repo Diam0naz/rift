@@ -1,0 +1,7 @@
+{
+  "filter_paths": "lib/|test/|script/",
+  "exclude_informational": true,
+  "detectors_to_exclude": "timestamp,incorrect-equality,reentrancy-events",
+  "compile_force_framework": "foundry",
+  "foundry_compile_all": false
+}

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Format, build, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Check formatting
+        run: forge fmt --check
+
+      - name: Build
+        run: forge build
+
+      # Unit tests, invariant fuzzing, and the fork replay of the recorded testnet trip.
+      # The fork test is skipped unless the UNICHAIN_SEPOLIA_RPC repository secret is set.
+      - name: Test
+        run: forge test -vvv
+        env:
+          UNICHAIN_SEPOLIA_RPC: ${{ secrets.UNICHAIN_SEPOLIA_RPC }}
+
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: crytic/slither-action@v0.4.0
+        with:
+          slither-config: slither.config.json
+          fail-on: low

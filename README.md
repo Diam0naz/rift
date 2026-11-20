@@ -54,6 +54,20 @@ A price spike alone (someone pushing a thin pool to collect on protection) can't
 - **Trip retry with confirmation.** RiftReactive subscribes to the market's own `Tripped` event on Unichain. Until it sees it, every later event re-sends the same trip, at most every `TRIP_RETRY_SECONDS` (30 s). `trip()` is idempotent, so duplicates are harmless.
 - **Out-of-order marks.** `updateMark` ignores a mark observed earlier than the current one and emits `StaleMarkIgnored`.
 
+### Perp mark hardening
+
+The trip already needs a real drain, but the perp mark comes straight from pool prices, so it gets its own defences in RiftReactive:
+
+- **Time-weighted mark.** The mark sent to the perp is a continuous-time moving average of the spread (`markSmoothingSeconds`, default 30 s). Each spread is weighted by how long it actually held, so a price pushed and put back within one Reactive second moves the mark by nothing, and a move has to persist to reach the mark. The trip still uses the raw spread, because the trip settles at the crash level, and the outflow condition already guards it.
+- **Thin-pool guard.** A `Sync` whose token1 reserve is below `minQuoteReserve` is ignored, and the pool's last good price is kept (`ThinPoolIgnored`).
+
+### Liveness guard
+
+If RiftReactive stops (out of lREACT, or callbacks unfunded), a drain could never trip, yet the market would keep selling cover. So:
+
+- RiftReactive resends the mark at least every `markHeartbeat` (default 600 s), even when it hasn't changed. Its Cron1000 subscription (default, ~17 min, ~1 lREACT/day) keeps this going when nobody trades.
+- RiftMarket refuses new cover and new positions when the last mark landed more than `maxMarkAge` ago (default 1 h, owner-settable between 5 min and 1 day) and reverts with `StaleMark(age)`. Closing positions and claiming always work.
+
 ## Contracts
 
 | Contract | Chain | Role |
@@ -143,17 +157,21 @@ What the run showed (2026-11-20). This run used the contracts deployed above, wh
 - **updateMark:** a 20 tBASE swap on Base moved the spread to +403 bps, and the market's mark updated to +403 about 2 s later.
 - **trip:** [`DemoExploit`](https://sepolia.basescan.org/tx/0xe1f1b9bd672729ab8d39dfd1a86cb4d8db0a6fa92b7abd982e278a7e33545122) drained 30% of the vault and dumped the loot into the Base pool, pushing the spread to −7,446 bps. RiftReactive recorded the breach but didn't trip until the follow-up swap arrived, after the 2 s sustain period. The trip callback paid policy 0 its full 10,000 tUSD notional (payout ratio 100%) in the same transaction and froze the perp at −7,436 bps.
 
-## Tests
+## Tests and verification
 
 ```bash
 forge test -vv
 ```
 
-They cover the full loop in one EVM: fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, and out-of-order marks.
+- **Unit tests** (`test/Rift.t.sol`): the full loop in one EVM. Fake origin logs go into `react()`, the recorded callbacks are replayed through a fake proxy, and the test checks the payouts. Also covered: throttling, window expiry, each trip condition failing on its own, funding math, callback auth, the cover waiting period, claims (including a buyer that can't receive tokens), trip retry until confirmed, out-of-order marks, the time-weighted mark, the thin-pool guard and the liveness guard.
+- **Invariant fuzzing** (`test/invariant/`): random sequences of deposits, withdrawals, cover purchases, positions, liquidations, marks, trips, claims and time jumps (256 runs × 500 calls). Checked after every call: the market's collateral covers `poolAssets + totalMargin + totalOwed`, a trip never commits more than the pool held, shares are conserved, and the payout ratio stays ≤ 100%.
+- **Fork replay** (`test/fork/ReplayTrip.t.sol`): forks Unichain Sepolia just before the recorded trip callback below and replays that exact transaction with `vm.transact`, checking the trip and the 10,000 tUSD payout. Runs when `UNICHAIN_SEPOLIA_RPC` is set, and is skipped otherwise.
+- **Slither** (`slither.config.json`): 0 findings on `src/`. Three detectors are excluded on purpose: `timestamp` (all timing is timestamp-based by design), `incorrect-equality` (only zero checks), and `reentrancy-events` (the only external call before those events is to Reactive's system contract).
+- **CI** (`.github/workflows/ci.yml`): formatting, build, all tests and Slither on every push and pull request. Add an `UNICHAIN_SEPOLIA_RPC` repository secret to run the fork test there too.
 
 ## Known limits (hackathon scope)
 
-- Max 64 live policies so `trip()` can pay everyone in one callback.
+- Max 64 live policies so `trip()` can settle everyone in one callback (about 1.3M gas at 64).
 - The pool is the perp counterparty. Funding is linear in the spread and there is no leverage beyond 10x.
 - `resetDemo()` exists on both contracts only so the demo can be replayed.
 

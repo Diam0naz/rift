@@ -67,7 +67,9 @@ contract RiftTest is Test {
                 windowSeconds: 300,
                 tripOutflowBps: 1500, // 15%
                 markEpsilonBps: 10,
-                markHeartbeat: 60
+                markHeartbeat: 60,
+                markSmoothingSeconds: 30,
+                minQuoteReserve: 100e18
             })
         );
         market.setReactive(address(rx));
@@ -139,6 +141,101 @@ contract RiftTest is Test {
         assertEq(rx.windowOutflow(), 0);
     }
 
+    // ---------------------------------------------------------------- mark hardening
+
+    function test_spikeRevertedInSameSecondDoesNotMoveMark() public {
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        _sync(UNI, poolUni, 1_000e18, 2_000e18);
+        uint256 sent = _callbacks();
+        assertEq(rx.smoothedSpreadBps(), 0);
+
+        // Push the Base pool hard and put it back inside one Reactive second.
+        _sync(BASE, poolBase, 1_000e18, 2_400e18); // spot spread -1,667 bps
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        assertEq(rx.smoothedSpreadBps(), 0, "zero-duration spike has zero weight");
+        assertEq(_callbacks(), sent, "no mark pushed");
+
+        vm.warp(block.timestamp + 60);
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        assertEq(rx.smoothedSpreadBps(), 0, "the reverted price is what held");
+    }
+
+    function test_sustainedMoveReachesMarkOverSmoothingWindow() public {
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        _sync(UNI, poolUni, 1_000e18, 2_000e18);
+        _sync(UNI, poolUni, 1_000e18, 2_040e18); // spot +200 bps from now on
+        assertEq(rx.smoothedSpreadBps(), 0);
+
+        vm.warp(block.timestamp + 15); // half of markSmoothingSeconds (30)
+        _sync(UNI, poolUni, 1_000e18, 2_040e18);
+        assertEq(rx.smoothedSpreadBps(), 100);
+        _deliverAll();
+        assertEq(market.markBps(), 100, "smoothed mark is what the perp sees");
+
+        vm.warp(block.timestamp + 30);
+        _sync(UNI, poolUni, 1_000e18, 2_040e18);
+        assertEq(rx.smoothedSpreadBps(), 200);
+    }
+
+    function test_thinPoolSyncIsIgnored() public {
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        vm.expectEmit(address(rx));
+        emit RiftReactive.ThinPoolIgnored(BASE, 50e18, block.number);
+        _sync(BASE, poolBase, 10e18, 50e18); // below minQuoteReserve (100e18)
+        assertEq(rx.priceBase(), 2e18, "last good price kept");
+    }
+
+    function test_heartbeatResendsUnchangedMark() public {
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        _sync(UNI, poolUni, 1_000e18, 2_000e18);
+        uint256 sent = _callbacks();
+
+        vm.warp(block.timestamp + 30);
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        assertEq(_callbacks(), sent, "before heartbeat: nothing new");
+
+        vm.warp(block.timestamp + 31); // past markHeartbeat (60)
+        _sync(BASE, poolBase, 1_000e18, 2_000e18);
+        assertEq(_callbacks(), sent + 1, "liveness ping with the same mark");
+    }
+
+    // ---------------------------------------------------------------- liveness guard
+
+    function test_staleMarkBlocksNewRiskButNotExits() public {
+        _pushMark(0);
+        vm.startPrank(trader);
+        usd.approve(address(market), type(uint256).max);
+        market.openPosition(true, 1_000e18, 500e18);
+        vm.stopPrank();
+
+        uint256 age = market.maxMarkAge() + 1;
+        vm.warp(block.timestamp + age);
+
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(RiftMarket.StaleMark.selector, age));
+        market.buyProtection(1_000e18, 1 days);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(RiftMarket.StaleMark.selector, age));
+        market.openPosition(true, 1_000e18, 500e18);
+
+        vm.prank(trader);
+        market.closePosition(); // exits always work
+
+        _pushMark(0); // Reactive side is back
+        vm.prank(buyer);
+        market.buyProtection(1_000e18, 1 days);
+    }
+
+    function test_maxMarkAgeIsBounded() public {
+        vm.expectRevert(RiftMarket.BadMaxMarkAge.selector);
+        market.setMaxMarkAge(1 minutes);
+        vm.expectRevert(RiftMarket.BadMaxMarkAge.selector);
+        market.setMaxMarkAge(2 days);
+        market.setMaxMarkAge(30 minutes);
+        assertEq(market.maxMarkAge(), 30 minutes);
+    }
+
     // ---------------------------------------------------------------- full loop
 
     function test_drainTripsAndPaysProtection() public {
@@ -173,6 +270,7 @@ contract RiftTest is Test {
     // ---------------------------------------------------------------- fix 1: cover waiting period
 
     function test_policyBoughtInsideCoverDelayIsRefundedNotPaid() public {
+        _pushMark(0); // the market only sells cover while marks are fresh
         address late = makeAddr("late");
         _fund(late, 1_000e18);
 
@@ -200,6 +298,7 @@ contract RiftTest is Test {
     }
 
     function test_coverDelayIsBoundedAndNotRetroactive() public {
+        _pushMark(0); // the market only sells cover while marks are fresh
         vm.expectRevert(RiftMarket.BadCoverDelay.selector);
         market.setCoverDelay(2 hours);
 
@@ -218,6 +317,7 @@ contract RiftTest is Test {
     // ---------------------------------------------------------------- fix 3: pull payouts + trip retry
 
     function test_claimIsOneShotAndBlocksDemoReset() public {
+        _pushMark(0); // the market only sells cover while marks are fresh
         vm.prank(buyer);
         uint256 id = market.buyProtection(10_000e18, 1 days);
         vm.warp(block.timestamp + market.coverDelay());
@@ -241,6 +341,8 @@ contract RiftTest is Test {
         BlockingToken btk = new BlockingToken();
         RiftMarket m = new RiftMarket(IPayable(payable(proxy)), IERC20(address(btk)));
         m.setReactive(address(rx));
+        vm.prank(proxy);
+        m.updateMark(address(rx), 0, block.timestamp, BASE, 0);
         btk.mint(address(this), 100_000e18);
         btk.approve(address(m), type(uint256).max);
         m.deposit(100_000e18);
