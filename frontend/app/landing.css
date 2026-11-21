@@ -3,7 +3,8 @@
  *   .plane-bg  atmosphere: gradients, grid, grain, outlined forms (moves slowest)
  *   .plane-mid content cards and cropped imagery, pushed back in Z with soft shadows
  *   .plane-fg  display type and calls to action, closest to the viewer
- * --sy (scroll px) and --mx/--my (pointer, -1..1) are set on .landing by a small script;
+ * --sy (px a section's centre is past the viewport centre, per .stage) and --mx/--my (pointer, -1..1,
+ * on .landing) are set by a small script;
  * each plane multiplies them by its own factor, which is what produces the parallax.
  *
  * Theme: dark by default; light follows the OS, and data-theme="light" | "dark" on .landing

@@ -15,7 +15,12 @@ import { BlockStrip, CurveCrop, TripCrop } from "./visuals";
 
 
 
-/** Drives the depth planes: --sy follows scroll, --mx/--my follow the pointer. Off for reduced motion. */
+/**
+ * Drives the depth planes: --mx/--my follow the pointer; --sy is set per .stage as how far that section's
+ * centre has scrolled past the viewport's centre (0 when centred, clamped to ±1 viewport). Relative, so a
+ * section's foreground sits exactly in place while it's being read, however far down the page it is.
+ * Off for reduced motion.
+ */
 function useDepth(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const el = ref.current;
@@ -25,7 +30,12 @@ function useDepth(ref: React.RefObject<HTMLDivElement | null>) {
     let my = 0;
     const paint = () => {
       frame = 0;
-      el.style.setProperty("--sy", String(window.scrollY));
+      const vh = window.innerHeight;
+      for (const stage of el.querySelectorAll<HTMLElement>(".stage")) {
+        const r = stage.getBoundingClientRect();
+        const sy = Math.max(-vh, Math.min(vh, vh / 2 - (r.top + r.height / 2)));
+        stage.style.setProperty("--sy", sy.toFixed(0));
+      }
       el.style.setProperty("--mx", mx.toFixed(3));
       el.style.setProperty("--my", my.toFixed(3));
     };
@@ -38,10 +48,12 @@ function useDepth(ref: React.RefObject<HTMLDivElement | null>) {
       schedule();
     };
     window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule, { passive: true });
     window.addEventListener("pointermove", onMove, { passive: true });
     paint();
     return () => {
       window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
       window.removeEventListener("pointermove", onMove);
       cancelAnimationFrame(frame);
     };

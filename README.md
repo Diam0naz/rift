@@ -184,7 +184,7 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 
 ## Frontend
 
-`frontend/` is a Next.js app that reads the live deployment straight from Base Sepolia, Unichain Sepolia and Lasna, with no backend. `/` is the site; `/app` is the dashboard and trading, in the same visual language (light and dark). The dashboard needs no wallet. It shows:
+`frontend/` is a Next.js app that reads the live deployment straight from Base Sepolia, Unichain Sepolia and Lasna. Event history comes from the optional indexer (`indexer/`, below), or from the browser if none is configured. `/` is the site; `/app` is the dashboard and trading, in the same visual language (light and dark). The dashboard needs no wallet. It shows:
 
 - a risk band (green/amber/red) computed by fixed rules from on-chain numbers: distance to trip, pool utilization, open perp exposure, premium stress, mark freshness, RiftReactive's lREACT runway and callback funding;
 - pool prices, the raw and smoothed spread, and the perp mark over time, including the trip;
@@ -200,6 +200,7 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 | `/app/underwrite` | Share value and price, deposit (approve → deposit), two-step withdrawal with countdown, pool composition, payout history |
 | `/app/monitor` | The Reactive watch per chain (Base, Lasna, Unichain), the event path, trip conditions, the drain-to-payout sequence with Replay, latency, system |
 | `/app/activity` | Your covers, claims, positions, liquidations, deposits and withdrawals, filterable, each with its tx |
+| `/app/history` | Protocol-wide: indexer status per chain, totals (cover sold, premiums, payouts, perp volume, deposits, wallets), every trip end to end (Base origin → Lasna reaction → Unichain settlement, with seconds), and the event log of all three chains, filterable by chain, type and address |
 
 **Wallets:** RainbowKit over wagmi 2. Installed browser wallets are detected automatically. Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (a free Reown project ID) to add mobile/QR wallets. Every signature runs through a step list (approve → action) that explains what you're signing, simulates first so reverts show a plain reason before the wallet opens, adds 25% gas headroom, links each tx and retries from the failed step.
 
@@ -207,10 +208,18 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 cd frontend
 pnpm install
 pnpm dev            # http://localhost:3000
-pnpm e2e            # end-to-end test of Protect, Underwrite and Trade on a local anvil fork (needs foundry + google-chrome)
+pnpm e2e            # every screen end to end on a local anvil fork (needs foundry + google-chrome)
+node e2e/responsive.mjs http://localhost:3000 /tmp/shots   # layout at 375 / 768 / 1300 px
 ```
 
-`pnpm e2e` forks Unichain Sepolia with anvil. On the fork only, it resets the demo and delivers a fresh mark, then builds the app with a test-only wallet connector (anvil's unlocked account) and drives the faucet, buying cover, a deliberate revert, deposit and withdraw, and opening and closing a position in headless Chrome. Nothing touches the real testnet, and the test connector only exists in builds made with `NEXT_PUBLIC_E2E=1`.
+`pnpm e2e` forks Unichain Sepolia with anvil. On the fork only, it resets the demo and delivers a fresh mark, starts the indexer against the fork, then builds the app with a test-only wallet connector (anvil's unlocked account) and drives every screen in headless Chrome: faucet and add-token, buying cover, a deliberate revert, deposit and withdraw, opening and closing a position, then checks that Activity and History list what it did and Monitor renders. Nothing touches the real testnet, and the test connector only exists in builds made with `NEXT_PUBLIC_E2E=1`. [`frontend/docs/TESTING.md`](frontend/docs/TESTING.md) has both scripts and a per-screen checklist for a manual pass with a real wallet.
+
+**Indexer** (`indexer/`): one Node process that follows RiftMarket and the Unichain pool, the Base pool and vault, and RiftReactive on Lasna into Postgres on Neon (or SQLite locally), and serves `/status` and `/events` (filter by chain, contract, event, address). With it, history loads in one request, covers everything since deployment, and links each trip's Lasna reaction. See [`indexer/README.md`](indexer/README.md).
+
+```bash
+cd indexer && pnpm install && pnpm start          # http://localhost:42069
+cd frontend && NEXT_PUBLIC_INDEXER_URL=http://localhost:42069 pnpm build && pnpm start
+```
 
 Contract addresses live in `frontend/lib/config.ts`. After changing contracts, run `forge build` and then `pnpm abis` to regenerate the ABIs. The public Unichain RPC rate-limits, so for a shared demo set `NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC` (also `NEXT_PUBLIC_BASE_SEPOLIA_RPC`, `NEXT_PUBLIC_LASNA_RPC`) to a keyed endpoint.
 

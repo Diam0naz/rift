@@ -1,0 +1,26 @@
+{
+  "name": "rift-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Indexes Rift's events on Unichain Sepolia, Base Sepolia and Reactive Lasna into Postgres (Neon) or SQLite and serves them over HTTP.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "start:sqlite": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/main.ts"
+  },
+  "dependencies": {
+    "@neon/config": "1.14.6",
+    "@neon/env": "2.1.9",
+    "pg": "8.23.1",
+    "viem": "2.57.16"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "typescript": "5.9.3"
+  }
+}

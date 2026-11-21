@@ -74,7 +74,7 @@ export function ActivityScreen() {
   return (
     <>
       <PageHeader
-        kicker="05 / History · read from Unichain"
+        kicker="05 / Your wallet · on Unichain"
         title="Activity"
         intro="Everything your wallet has done on this market, newest first, each with its transaction."
       />

@@ -147,10 +147,26 @@ function headline(level: Level, drivers: Driver[], m: MarketState): string {
       ? `Tripped: payouts fixed at ${Number(m.payoutRatioBps) / 100}%, ${owed.toLocaleString()} tUSD still to claim.`
       : `Tripped: payouts fixed at ${Number(m.payoutRatioBps) / 100}% and fully claimed.`;
   }
-  if (level === "green") return "Calm: spread and vault flows are far from the trip conditions.";
-  const top = drivers.filter((d) => d.level === level).map((d) => d.label.toLowerCase());
-  return `${level === "red" ? "High" : "Elevated"} risk: ${top.join(", ")}.`;
+  if (level === "green") return "Calm: every check is green. Spread and vault flows are far from the trip conditions.";
+  const reasons = drivers.filter((d) => d.level === level).map((d) => WHY[d.key]?.(d) ?? d.label);
+  const lead =
+    level === "red"
+      ? "At least one check needs action now."
+      : "Amber means a check needs watching, not that anything has failed. The band is the worst of the checks alongside.";
+  return `${lead} ${reasons.join(" ")}`;
 }
+
+/** Plain-language reason (and, where there is one, the fix) for a check that isn't green. */
+const WHY: Record<string, (d: Driver) => string> = {
+  trip: () => "The spread or the vault outflow is at least halfway to its trip threshold.",
+  utilization: () => "The pool is past its 80% utilization kink, so new cover is priced steeply.",
+  perp: () => "Traders' unrealized profits are a noticeable share of the pool.",
+  stress: () => "The spread is wide enough to scale premiums up.",
+  liveness: () => "The last mark is getting old; new cover and positions stop if it passes the limit.",
+  runway: (d) =>
+    `RiftReactive is running low on lREACT (${d.value}), the gas it pays for every reaction on Lasna. If it runs out, it stops watching and nothing can trip. Topping it up turns this green.`,
+  callbacks: () => "The market's ETH for paying Reactive callbacks is running low.",
+};
 
 export function fmtDuration(s: number): string {
   if (!Number.isFinite(s)) return "∞";

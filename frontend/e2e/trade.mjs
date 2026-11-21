@@ -1,5 +1,5 @@
-// End-to-end drive of the Trade panel over the Chrome DevTools Protocol.
-// Usage: node e2e-trade.mjs <url> <outDir>
+// End-to-end drive of every /app screen over the Chrome DevTools Protocol, with a mock wallet on an anvil fork.
+// Usage: node e2e/trade.mjs <url> <outDir>   (run via e2e/run.sh, which sets up the fork and the indexer)
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -103,7 +103,9 @@ async function expectFlowDone(label) {
 
 let failed = null;
 try {
+  step("0. overview loads live state");
   await s("Page.navigate", { url });
+  await waitText("Risk band");
   await waitText("Test wallet");
   step("1. connect test wallet and get tUSD");
   await click("Test wallet");
@@ -178,6 +180,27 @@ try {
     if (!closed) throw new Error("timed out waiting for the position to close");
     step("  ✓ Close position: ticket back, position settled");
   }
+
+  step("6. activity: this wallet's cover, deposit and trades are listed");
+  await clickLink("Activity");
+  for (const t of ["Bought cover", "Deposited", "Cancelled withdrawal", "Opened long", "Closed position"]) await waitText(t, 90000);
+  step("  ✓ Activity lists cover, pool and perp events");
+  await shot("e2e-4-activity");
+
+  step("7. history: indexer live, totals and the event log include this run");
+  await clickLink("History");
+  await waitText("Unichain Sepolia");
+  await waitText("Long opened", 90000);
+  await waitText("Cover #", 30000);
+  const live = await evalJs(`document.querySelector('[aria-label="Indexer status"]')?.textContent ?? ''`);
+  if (!/live/i.test(live)) throw new Error(`indexer not live on History: ${live.slice(0, 200)}`);
+  step("  ✓ History: indexer live, run's events in the log");
+  await shot("e2e-5-history");
+
+  step("8. monitor: three-chain watch and the drain sequence render");
+  await clickLink("Monitor");
+  await waitText("Drain to payout");
+  step("  ✓ Monitor rendered");
 } catch (e) {
   failed = e.message;
   step(`✗ ${e.message}`);

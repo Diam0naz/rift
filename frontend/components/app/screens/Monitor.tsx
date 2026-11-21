@@ -6,6 +6,7 @@ import { pad, toHex } from "viem";
 import { addresses, explorers } from "@/lib/config";
 import { fmtBps, fmtCompact, fmtPrice, fmtTime, fmtToken, shortHex } from "@/lib/format";
 import { useMarkHistory, useMarket, useOrigin, useReactive } from "@/lib/hooks";
+import { useReactiveEvents } from "@/lib/indexer";
 import { useMarketLogs, type MarketLog } from "@/lib/logs";
 import type { MarketState, OriginState, ReactiveState } from "@/lib/reads";
 import { RECORDED } from "@/lib/recorded";
@@ -156,6 +157,7 @@ function DrainSequence({ m }: { m: MarketState }) {
   const trips = (logs.data ?? []).filter((l) => l.eventName === "Tripped");
   const trip: MarketLog | undefined = trips[trips.length - 1];
   const claims = trip ? (logs.data ?? []).filter((l) => l.eventName === "Claimed" && l.blockNumber >= trip.blockNumber) : [];
+  const reactive = useReactiveEvents().data;
 
   let hops: Hop[];
   let elapsed: number;
@@ -166,9 +168,13 @@ function DrainSequence({ m }: { m: MarketState }) {
     const originExplorer = Number(a.originChainId) === 84532 ? explorers.base : explorers.unichain;
     elapsed = Number(a.receivedAt - a.observedAt);
     caption = `Latest trip on this market · block ${trip.blockNumber.toString()} · observed ${fmtTime(a.observedAt)}`;
+    // With the indexer, the reaction hop is RiftReactive's actual TripSent tx on Lasna, matched by origin tx.
+    const sent = reactive?.find((e) => e.event === "TripSent" && e.args.originTxHash === a.originTxHash);
     hops = [
       { step: "01", chain: Number(a.originChainId) === 84532 ? "Base Sepolia" : "Unichain Sepolia", title: "Origin", text: `The event that completed both conditions. Outflow ${fmtBps(a.outflowBps, false)}.`, href: `${originExplorer}/tx/${originHash}`, label: shortHex(originHash, 6) },
-      { step: "02", chain: "Reactive Lasna", title: "Reaction", text: "RiftReactive saw both conditions hold and requested the trip callback.", href: `${explorers.lasna}/address/${addresses.lasna.reactive}`, label: "RiftReactive ↗" },
+      sent
+        ? { step: "02", chain: "Reactive Lasna", title: "Reaction", text: `RiftReactive saw both conditions hold and requested the trip callback, ${Math.max(0, sent.ts - Number(a.observedAt))}s after the origin block.`, href: `${explorers.lasna}/tx/${sent.txHash}`, label: shortHex(sent.txHash, 6) }
+        : { step: "02", chain: "Reactive Lasna", title: "Reaction", text: "RiftReactive saw both conditions hold and requested the trip callback.", href: `${explorers.lasna}/address/${addresses.lasna.reactive}`, label: "RiftReactive ↗" },
       { step: "03", chain: "Unichain Sepolia", title: "Settlement", text: `Payouts fixed at ${Number(a.payoutRatioBps) / 100}%, perp frozen at ${fmtBps(a.markBps)}.`, href: `${explorers.unichain}/tx/${trip.txHash}`, label: shortHex(trip.txHash, 6) },
       {
         step: "04",

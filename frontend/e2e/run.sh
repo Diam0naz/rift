@@ -4,9 +4,12 @@
 #   1. Forks Unichain Sepolia (chain id 1301) on :8545.
 #   2. On the fork only: impersonates the market owner to reset the demo, and the Reactive callback
 #      proxy to deliver a fresh mark, so the market accepts new risk.
-#   3. Builds the frontend in E2E mode (mock "Test wallet" = anvil's unlocked account #0) and serves :3001.
-#   4. Drives faucet, buy cover, a deliberate revert, deposit/withdraw, open/close perp in headless Chrome.
+#   3. Starts the indexer on the fork (Unichain only, from the fork block) on :42070.
+#   4. Builds the frontend in E2E mode (mock "Test wallet" = anvil's unlocked account #0) and serves :3001.
+#   5. Drives every screen in headless Chrome: faucet, add token, buy cover, a deliberate revert,
+#      deposit/withdraw, open/close perp, then checks Activity, History (via the indexer) and Monitor.
 #
+# Ports 8545, 3001 and 42070 must be free (a leftover server there makes the run test a stale build).
 # Needs: foundry (anvil, cast), google-chrome, node 22+, pnpm. Nothing touches the real testnet.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -22,9 +25,14 @@ OUT=${E2E_OUT:-$(mktemp -d)}
 
 cleanup() {
   [[ -n "${NEXT_PID:-}" ]] && kill "$NEXT_PID" 2>/dev/null || true
+  [[ -n "${INDEXER_PID:-}" ]] && kill "$INDEXER_PID" 2>/dev/null || true
   [[ -n "${ANVIL_PID:-}" ]] && kill "$ANVIL_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+for port in 8545 3001 42070; do
+  if ss -ltn "sport = :$port" | grep -q LISTEN; then echo "port $port is in use; stop that process first" >&2; exit 1; fi
+done
 
 anvil --fork-url "$FORK_URL" --chain-id 1301 --port 8545 --silent &
 ANVIL_PID=$!
@@ -41,7 +49,15 @@ cast send "$MARKET" 'updateMark(address,int256,uint256,uint256,uint256)' "$REACT
   --from "$PROXY" --unlocked --rpc-url "$RPC" >/dev/null
 echo "fork ready: tripped=$(cast call "$MARKET" 'tripped()(bool)' --rpc-url "$RPC")"
 
-export NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_E2E=1 NEXT_PUBLIC_E2E_ACCOUNT=$TEST_ACCOUNT NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC=$RPC
+# The indexer follows the fork from its current block, so History shows exactly this run's events.
+FORK_BLOCK=$(cast block-number --rpc-url "$RPC")
+(cd ../indexer && [[ -d node_modules ]] || pnpm install --silent)
+INDEX_CHAINS=unichain UNICHAIN_SEPOLIA_RPC=$RPC UNICHAIN_FROM_BLOCK=$FORK_BLOCK UNICHAIN_CONFIRMATIONS=0 POLL_MS=1000 \
+  PORT=42070 DB_PATH="$OUT/indexer.db" node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ../indexer/src/main.ts >"$OUT/indexer.log" 2>&1 &
+INDEXER_PID=$!
+timeout 30 bash -c 'until curl -sf http://localhost:42070/status >/dev/null; do sleep 1; done'
+
+export NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_E2E=1 NEXT_PUBLIC_E2E_ACCOUNT=$TEST_ACCOUNT NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC=$RPC NEXT_PUBLIC_INDEXER_URL=http://localhost:42070
 pnpm build >/dev/null
 pnpm start -p 3001 >/dev/null 2>&1 &
 NEXT_PID=$!
