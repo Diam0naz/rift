@@ -13,7 +13,7 @@ const store = await openStore(process.env, sqlitePath);
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 const syncers = enabledChains().map((c) => new ChainSyncer(c, store, log));
 
-const where = store.kind === "postgres" ? `Postgres (${new URL(process.env.DATABASE_URL!).hostname})` : sqlitePath;
+const where = store.kind === "postgres" ? "Postgres (DATABASE_URL)" : sqlitePath;
 log(`indexing ${syncers.map((s) => s.status.name).join(", ")} into ${where}`);
 const server = serve(store, syncers, port, Date.now());
 for (const s of syncers) void s.run();

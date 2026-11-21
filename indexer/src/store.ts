@@ -39,9 +39,28 @@ export interface Store {
   close(): Promise<void>;
 }
 
+/** Hosting dashboards make it easy to paste a value with its quotes from an .env file; accept that. */
+const unquote = (v?: string) => v?.trim().replace(/^(["'])(.*)\1$/, "$2") || undefined;
+
+/** Checks a connection string without ever echoing it: it carries the database password. */
+function checkUrl(name: string, v: string) {
+  try {
+    const u = new URL(v);
+    if (!/^postgres(ql)?:$/.test(u.protocol)) throw new Error();
+  } catch {
+    throw new Error(`${name} isn't a valid postgresql:// URL (value not shown: it contains a password)`);
+  }
+}
+
 export async function openStore(env: NodeJS.ProcessEnv, sqlitePath: string): Promise<Store> {
-  const store = env.DATABASE_URL
-    ? new (await import("./store-postgres.ts")).PostgresStore(env.DATABASE_URL, env.DATABASE_URL_UNPOOLED ?? env.DATABASE_URL)
+  const url = unquote(env.DATABASE_URL);
+  const direct = unquote(env.DATABASE_URL_UNPOOLED) ?? url;
+  if (url) {
+    checkUrl("DATABASE_URL", url);
+    checkUrl("DATABASE_URL_UNPOOLED", direct!);
+  }
+  const store = url
+    ? new (await import("./store-postgres.ts")).PostgresStore(url, direct!)
     : new (await import("./store-sqlite.ts")).SqliteStore(sqlitePath);
   await store.init();
   return store;
