@@ -49,10 +49,17 @@ async function waitAnyStatus(prefix, ms = 90000) {
   }
   throw new Error(`timed out waiting for status: ${prefix}`);
 }
-async function click(text) {
+async function click(text, ms = 30000) {
   // textContent ignores CSS text-transform (the app uppercases buttons and tabs); compare case-insensitively.
-  const ok = await evalJs(`(() => { const want = ${JSON.stringify(text.toLowerCase())}; const b = [...document.querySelectorAll('button')].find(b => { const t = b.textContent.trim().toLowerCase(); return t === want || t.startsWith(want); }); if (!b) return 'missing'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()`);
-  if (ok !== "ok") throw new Error(`button "${text}": ${ok}`);
+  // Waits for the button to exist and be enabled, as a person would (data loads after the label renders).
+  const end = Date.now() + ms;
+  let last = "missing";
+  while (Date.now() < end) {
+    last = await evalJs(`(() => { const want = ${JSON.stringify(text.toLowerCase())}; const b = [...document.querySelectorAll('button')].find(b => { const t = b.textContent.trim().toLowerCase(); return t === want || t.startsWith(want); }); if (!b) return 'missing'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()`);
+    if (last === "ok") return;
+    await sleep(400);
+  }
+  throw new Error(`button "${text}": ${last}`);
 }
 async function fill(label, value) {
   const ok = await evalJs(`(() => {
@@ -74,39 +81,59 @@ async function expectDone(prefix) {
   step(`  ✓ ${st}`);
 }
 
+async function clickLink(text) {
+  const ok = await evalJs(`(() => { const want = ${JSON.stringify(text.toLowerCase())}; const a = [...document.querySelectorAll('nav a')].find(a => a.textContent.trim().toLowerCase() === want); if (!a) return 'missing'; a.click(); return 'ok'; })()`);
+  if (ok !== "ok") throw new Error(`link "${text}": ${ok}`);
+}
+/** Waits for a TxFlow (numbered steps) to finish; returns the failure message if a step failed. */
+async function waitFlow(ms = 120000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const r = await evalJs(`(() => { const steps = [...document.querySelectorAll('[data-step-status]')]; if (!steps.length) return null; const st = steps.map(e => e.dataset.stepStatus); if (st.includes('failed')) { const el = steps[st.indexOf('failed')].querySelector('[role=alert]'); return { failed: el ? el.textContent.trim() : 'failed' }; } if (st.every(x => x === 'done' || x === 'skipped')) return { done: st }; return null; })()`);
+    if (r) return r;
+    await sleep(500);
+  }
+  throw new Error("timed out waiting for the transaction flow");
+}
+async function expectFlowDone(label) {
+  const r = await waitFlow();
+  if (r.failed) throw new Error(`${label} flow failed: ${r.failed}`);
+  step(`  ✓ ${label}: ${r.done.join(" → ")}`);
+}
+
 let failed = null;
 try {
   await s("Page.navigate", { url });
   await waitText("Test wallet");
-  step("1. connect test wallet");
+  step("1. connect test wallet and get tUSD");
   await click("Test wallet");
   await waitText("test tUSD");
-  step("2. faucet");
   await click("Get 10,000 test tUSD");
   await expectDone("Faucet");
 
-  step("3. protection: approve + buy 1,000 cover for 1 day");
-  await waitText("Premium");
-  await sleep(1500); // let the quote load
-  await click("Approve & buy cover");
-  await expectDone("Buy cover");
-  await waitText("Your recent policies");
-  await shot("e2e-1-protection");
-
-  step("4. protection: oversized order must fail with a readable reason, before signing");
-  await fill("Cover amount", "5000000");
-  await sleep(2000);
+  step("2. protect: approve + buy 1,000 cover for 1 day (two-step flow)");
+  await clickLink("Protect");
+  await waitText("Holdings on Base");
+  await sleep(2500); // quote
   await click("Buy cover");
-  const bad = await waitAnyStatus("Buy cover");
-  if (!bad.includes("failed")) throw new Error(`expected a failure, got: ${bad}`);
-  if (/signature: 0x|reverted with/.test(bad)) throw new Error(`revert reason not decoded: ${bad}`);
-  step(`  ✓ ${bad}`);
+  await expectFlowDone("Buy cover");
+  await waitText("Starts in");
+  await shot("e2e-1-protect");
 
-  step("5. underwrite: approve-if-needed + deposit 1,000, request 50%, cancel");
-  await click("Underwrite");
-  await waitText("Your shares");
+  step("3. protect: oversized order fails with a readable reason, before signing");
+  await fill("Cover amount", "5000000");
+  await sleep(2500);
+  await click("Buy cover");
+  const bad = await waitFlow();
+  if (!bad.failed) throw new Error("expected the oversized order to fail");
+  if (/signature: 0x|reverted with/.test(bad.failed)) throw new Error(`revert reason not decoded: ${bad.failed}`);
+  step(`  ✓ failed as expected: ${bad.failed}`);
+
+  step("4. underwrite: deposit 1,000, request 50%, cancel");
+  await clickLink("Underwrite");
+  await waitText("Your shares are worth");
   await click("Deposit");
-  await expectDone("Deposit");
+  await expectFlowDone("Deposit");
   await click("Request 50%");
   await expectDone("Request 50%");
   await waitText("unlocks in");
@@ -114,16 +141,40 @@ try {
   await click("Cancel");
   await expectDone("Cancel withdrawal");
 
-  step("6. perp: open 1,000 long at 5x, then close");
-  await click("Spread perp");
-  await waitText("Long the spread");
-  await fill("Leverage", "5");
+  step("5. trade: open 1,000 long at 5x, then close");
+  await clickLink("Trade");
+  await waitText("New position");
+  await click("5×");
   await click("Open long");
-  await expectDone("Open long");
-  await waitText("Close position");
-  await shot("e2e-3-perp");
+  // On success the ticket (and its step list) is replaced by the position card, so wait for that,
+  // while still surfacing a failed step if one appears first.
+  {
+    const end = Date.now() + 120000;
+    let opened = false;
+    while (Date.now() < end && !opened) {
+      const r = await evalJs(`(() => { if (document.body.textContent.includes('Margin health')) return 'open'; const f = document.querySelector('[data-step-status=failed] [role=alert]'); return f ? 'failed: ' + f.textContent.trim() : null; })()`);
+      if (r === "open") opened = true;
+      else if (r) throw new Error(`Open long ${r}`);
+      else await sleep(500);
+    }
+    if (!opened) throw new Error("timed out waiting for the position to open");
+    step("  ✓ Open long: position card shown");
+  }
+  await shot("e2e-3-trade");
   await click("Close position");
-  await expectDone("Close position");
+  // On success the position card is replaced by a fresh order ticket; a failure leaves an error status.
+  {
+    const end = Date.now() + 120000;
+    let closed = false;
+    while (Date.now() < end && !closed) {
+      const r = await evalJs(`(() => { if (document.body.textContent.includes('New position')) return 'closed'; const st = [...document.querySelectorAll('[role=status]')].map(e => e.textContent).find(t => t.startsWith('Close position failed')); return st || null; })()`);
+      if (r === "closed") closed = true;
+      else if (r) throw new Error(r);
+      else await sleep(500);
+    }
+    if (!closed) throw new Error("timed out waiting for the position to close");
+    step("  ✓ Close position: ticket back, position settled");
+  }
 } catch (e) {
   failed = e.message;
   step(`✗ ${e.message}`);

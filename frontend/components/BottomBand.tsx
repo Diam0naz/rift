@@ -4,6 +4,9 @@ import { useMemo } from "react";
 
 import { fmtBps } from "@/lib/format";
 
+/** Catchphrases for the marquee. Each one is true of the contracts (see README / docs/DESIGN.md). */
+const CATCHPHRASES = ["Trade the gap", "Payout fixed in ~2s", "Two conditions or nothing", "Settled by Reactive Network", "Mind the gap"];
+
 /**
  * Closing band for the dashboard: large type plus a looping seismograph whose amplitude follows the live
  * raw spread (calm when the pools agree, jagged as the spread approaches the trip threshold, red after a trip).
@@ -49,9 +52,36 @@ export function BottomBand({
   return (
     <section
       aria-label="Every second counts"
-      className="relative z-10 mt-16 flex flex-1 flex-col justify-end overflow-hidden border-t"
+      className="relative z-10 mt-16 flex flex-1 flex-col overflow-hidden border-t"
       style={{ borderColor: "var(--line-strong)" }}
     >
+      {/* Flexible strip: absorbs whatever height is left on tall screens, so the page never ends on blank space. */}
+      <div className="dots relative flex min-h-[9rem] flex-1 items-center overflow-hidden border-b sm:min-h-[11rem]" style={{ borderColor: "var(--line)" }} aria-hidden>
+        <div className="ticker ticker-reverse">
+          {[0, 1].map((dup) => (
+            <div key={dup} className="flex shrink-0 items-center">
+              {CATCHPHRASES.map((phrase, i) => (
+                <span key={phrase + dup} className="flex items-center">
+                  <span
+                    className={`display whitespace-nowrap px-8 ${i % 2 ? "outline-text" : ""}`}
+                    style={{ fontSize: "clamp(3rem, 7.5vw, 6.5rem)", opacity: i % 2 ? 1 : 0.9 }}
+                  >
+                    {phrase}
+                  </span>
+                  <span className="display px-2" style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)", color: "var(--rift)" }}>
+                    /
+                  </span>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: "linear-gradient(90deg, var(--ink), transparent 12%, transparent 88%, var(--ink))" }}
+        />
+      </div>
+
       <div className="mx-auto w-full max-w-[1440px] px-4 pb-8 pt-14 sm:px-6 lg:px-12">
         <p className="kicker mb-5">
           Raw spread {spreadBps === undefined ? "…" : fmtBps(spreadBps)}

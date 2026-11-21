@@ -14,8 +14,8 @@ section labels; the red live ticker; cream hard-shadow buttons. Tokens live in `
 component token names are mapped onto them inside `.landing`. The three-plane structure, states, screen map and
 contract notes in this document still apply.
 
-**RainbowKit blocker:** RainbowKit 2.2.11 (latest) supports wagmi ^2 only; the app is on wagmi 3.7.11.
-Options: downgrade to wagmi 2.x, wait for a wagmi-3 RainbowKit release, or keep the themed injected picker.
+**Wallet (resolved):** downgraded to wagmi 2.19.5 with RainbowKit 2.2.11, themed to the site. Optional x402 imports
+from @coinbase/cdp-sdk (pulled in via wagmi's connectors) are aliased to a throwing stub in next.config.ts.
 
 ---
 

@@ -341,6 +341,11 @@ html:has(.landing) {
   width: max-content;
   animation: ticker 48s linear infinite;
 }
+/* Slower, opposite-direction marquee for the app's closing band. */
+.ticker-reverse {
+  animation-duration: 90s;
+  animation-direction: reverse;
+}
 @keyframes ticker {
   to {
     transform: translateX(-50%);
@@ -447,4 +452,24 @@ html:has(.landing) {
   border-color: var(--bone);
   outline: 2px solid var(--cold);
   outline-offset: 2px;
+}
+
+/* Monitor: the path line between hops, with a pulse travelling along it (origin -> react -> callback). */
+.seam-line {
+  background: linear-gradient(90deg, var(--line-strong), var(--rift) 50%, var(--line-strong));
+  background-size: 200% 100%;
+  animation: seam-travel 2.4s linear infinite;
+}
+@keyframes seam-travel {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seam-line {
+    animation: none;
+  }
 }

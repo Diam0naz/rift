@@ -336,7 +336,10 @@ export function HealthPanel({ m, r, o }: { m: MarketState; r: ReactiveState; o: 
         <Row k="Reactive Lasna head" v={fmtTime(r.now)} />
         <Row k="RiftReactive balance" v={`${fmtToken(r.balance, 3)} lREACT`} />
         <Row k="Market callback funding" v={`${fmtToken(m.callbackFunding, 4)} ETH`} />
-        <Row k="Trips sent / confirmed" v={`${r.tripsSent.toString()} / ${r.tripConfirmed ? "yes" : "no"}`} />
+        <Row
+          k="Trip state"
+          v={r.tripped ? (r.tripConfirmed ? "tripped · confirmed" : "tripped · awaiting confirmation") : `armed · ${r.tripsSent.toString()} sent all-time`}
+        />
         <Row k="Mark heartbeat" v={`every ≤ ${fmtDuration(Number(r.params.markHeartbeat))}`} />
         <Row k="Max mark age" v={fmtDuration(Number(m.maxMarkAge))} />
       </dl>

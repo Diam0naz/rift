@@ -190,19 +190,24 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 - pool prices, the raw and smoothed spread, and the perp mark over time, including the trip;
 - both trip conditions against their thresholds, the underwriting pool, live premium quotes, policies, and callback latency.
 
-**Trading** (wallet on Unichain Sepolia, via any injected wallet such as MetaMask):
+**App screens** (`/app`), all in the site's visual language:
 
-- **Protection:** live premium quote, buy cover, see when your cover starts, and claim payouts or refunds.
-- **Underwrite:** deposit, then request, cancel or complete a withdrawal after the delay. Shares are priced at the pool's value.
-- **Spread perp:** long or short at 1–10×, with live PnL, funding and equity, and a close button.
-- A faucet for test tUSD.
-- Every action is simulated before you sign, so a revert shows a plain reason ("market has tripped", "mark is stale", "not enough tUSD") instead of failing on-chain. Gas is estimated with a 25% buffer, because funding accrues every second and an exact estimate can run out by the time the transaction is mined.
+| Route | What you do there |
+|---|---|
+| `/app` | Overview: risk band, the three products, live spread, trip conditions, pool, policies, latency, system |
+| `/app/protect` | The watched vault and its exact trigger, live quote (no wallet needed), review, approve → buy, your covers with countdowns and claim |
+| `/app/trade` | Large spread chart with your entry and liquidation lines, order ticket (side, size, leverage, margin, liquidation mark, funding/day), position card with margin health, close, receipt |
+| `/app/underwrite` | Share value and price, deposit (approve → deposit), two-step withdrawal with countdown, pool composition, payout history |
+| `/app/monitor` | The Reactive watch per chain (Base, Lasna, Unichain), the event path, trip conditions, the drain-to-payout sequence with Replay, latency, system |
+| `/app/activity` | Your covers, claims, positions, liquidations, deposits and withdrawals, filterable, each with its tx |
+
+**Wallets:** RainbowKit over wagmi 2. Installed browser wallets are detected automatically. Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (a free Reown project ID) to add mobile/QR wallets. Every signature runs through a step list (approve → action) that explains what you're signing, simulates first so reverts show a plain reason before the wallet opens, adds 25% gas headroom, links each tx and retries from the failed step.
 
 ```bash
 cd frontend
 pnpm install
 pnpm dev            # http://localhost:3000
-pnpm e2e            # end-to-end trading test on a local anvil fork (needs foundry + google-chrome)
+pnpm e2e            # end-to-end test of Protect, Underwrite and Trade on a local anvil fork (needs foundry + google-chrome)
 ```
 
 `pnpm e2e` forks Unichain Sepolia with anvil. On the fork only, it resets the demo and delivers a fresh mark, then builds the app with a test-only wallet connector (anvil's unlocked account) and drives the faucet, buying cover, a deliberate revert, deposit and withdraw, and opening and closing a position in headless Chrome. Nothing touches the real testnet, and the test connector only exists in builds made with `NEXT_PUBLIC_E2E=1`.

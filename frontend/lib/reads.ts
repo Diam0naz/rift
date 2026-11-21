@@ -1,10 +1,10 @@
-import { parseAbiItem, type Address } from "viem";
+
 
 import { mockVaultAbi } from "./abi/MockVault";
 import { riftMarketAbi } from "./abi/RiftMarket";
 import { riftPoolAbi } from "./abi/RiftPool";
 import { riftReactiveAbi } from "./abi/RiftReactive";
-import { LOG_CHUNK, MARKET_DEPLOY_BLOCK, addresses, clients } from "./config";
+import { addresses, clients } from "./config";
 
 const market = { address: addresses.unichain.market, abi: riftMarketAbi } as const;
 const reactive = { address: addresses.lasna.reactive, abi: riftReactiveAbi } as const;
@@ -239,10 +239,6 @@ export type OriginState = Awaited<ReturnType<typeof readOrigin>>;
 
 // ---------------------------------------------------------------- history: marks delivered to the market
 
-const markUpdated = parseAbiItem(
-  "event MarkUpdated(int256 markBps, uint256 observedAt, uint256 receivedAt, uint256 originChainId, uint256 originTxHash)",
-);
-
 export type MarkPoint = {
   markBps: number;
   observedAt: number;
@@ -252,90 +248,3 @@ export type MarkPoint = {
   txHash: `0x${string}`;
   blockNumber: bigint;
 };
-
-/** Max getLogs calls in flight at once, to stay under the public RPC's rate limit. */
-const LOG_CONCURRENCY = 3;
-/** Look back at most this many chunks (~1,000 blocks each, ~1.4 days on Unichain's 1s blocks). */
-const MAX_CHUNKS = 120n;
-
-type HistoryCache = { points: MarkPoint[]; scannedTo: bigint };
-const STORAGE_KEY = `rift:markHistory:${addresses.unichain.market}`;
-let historyCache: HistoryCache | null = null;
-
-/** History saved in this browser, so a reload only scans new blocks. Absent or unreadable -> rescan. */
-function loadStoredHistory(): HistoryCache | null {
-  try {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
-    if (!raw) return null;
-    const v = JSON.parse(raw) as { scannedTo: string; points: (Omit<MarkPoint, "blockNumber"> & { blockNumber: string })[] };
-    return {
-      scannedTo: BigInt(v.scannedTo),
-      points: v.points.map((p) => ({ ...p, blockNumber: BigInt(p.blockNumber) })),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function storeHistory(c: HistoryCache) {
-  try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        scannedTo: c.scannedTo.toString(),
-        points: c.points.map((p) => ({ ...p, blockNumber: p.blockNumber.toString() })),
-      }),
-    );
-  } catch {
-    // Private mode or blocked storage: keep the in-memory copy only.
-  }
-}
-
-/**
- * Every MarkUpdated event since the market was deployed (capped at MAX_CHUNKS back), oldest first.
- * Unichain's RPC limits eth_getLogs to 1,000 blocks, so the range is split into chunks. After the
- * first load, only blocks not yet scanned are fetched.
- */
-export async function readMarkHistory(): Promise<MarkPoint[]> {
-  const c = clients.unichain;
-  historyCache ??= loadStoredHistory();
-  const head = await c.getBlockNumber();
-  const floor = head > MAX_CHUNKS * LOG_CHUNK ? head - MAX_CHUNKS * LOG_CHUNK : 0n;
-  let start = historyCache ? historyCache.scannedTo + 1n : MARKET_DEPLOY_BLOCK;
-  if (start < floor) start = floor;
-  if (start < MARKET_DEPLOY_BLOCK) start = MARKET_DEPLOY_BLOCK;
-
-  const ranges: [bigint, bigint][] = [];
-  for (let from = start; from <= head; from += LOG_CHUNK) {
-    const to = from + LOG_CHUNK - 1n;
-    ranges.push([from, to > head ? head : to]);
-  }
-
-  const logs = [];
-  for (let i = 0; i < ranges.length; i += LOG_CONCURRENCY) {
-    const batch = await Promise.all(
-      ranges
-        .slice(i, i + LOG_CONCURRENCY)
-        .map(([fromBlock, toBlock]) =>
-          c.getLogs({ address: addresses.unichain.market as Address, event: markUpdated, fromBlock, toBlock }),
-        ),
-    );
-    logs.push(...batch.flat());
-  }
-
-  const fresh: MarkPoint[] = logs.map((l) => ({
-    markBps: Number(l.args.markBps!),
-    observedAt: Number(l.args.observedAt!),
-    receivedAt: Number(l.args.receivedAt!),
-    latency: Number(l.args.receivedAt!) - Number(l.args.observedAt!),
-    originChainId: Number(l.args.originChainId!),
-    txHash: l.transactionHash!,
-    blockNumber: l.blockNumber!,
-  }));
-  const points = [...(historyCache?.points ?? []), ...fresh].sort((a, b) =>
-    a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,
-  );
-  historyCache = { points, scannedTo: head };
-  storeHistory(historyCache);
-  return points;
-}

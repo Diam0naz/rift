@@ -10,6 +10,8 @@ export function MarkChart({
   now,
   tripSpreadBps,
   trip,
+  lines: refLines = [],
+  height,
 }: {
   /** undefined while the history is still loading. */
   points: MarkPoint[] | undefined;
@@ -17,14 +19,18 @@ export function MarkChart({
   tripSpreadBps: number;
   /** The trip sets the mark through trip(), not MarkUpdated, so it's drawn as its own final step. */
   trip?: { at: number; bps: number };
+  /** Horizontal reference lines, e.g. a position's entry and liquidation marks. */
+  lines?: { bps: number; label: string; color: string }[];
+  /** Taller variant for the Trade screen. */
+  height?: number;
 }) {
   const W = 640;
-  const H = 180;
+  const H = height ?? 180;
   const pad = { l: 56, r: 8, t: 10, b: 22 };
 
   if (!points || points.length === 0) {
     return (
-      <div className="flex h-[180px] items-center justify-center bg-panel-2 text-xs text-muted" role="status">
+      <div className="flex items-center justify-center bg-panel-2 text-xs text-muted" style={{ height: H }} role="status">
         {points ? "No marks have reached the market yet." : "Loading mark history…"}
       </div>
     );
@@ -36,6 +42,7 @@ export function MarkChart({
     tripSpreadBps * 1.15,
     ...points.map((p) => Math.abs(p.markBps)),
     trip ? Math.abs(trip.bps) * 1.08 : 0,
+    ...refLines.filter((l) => Number.isFinite(l.bps)).map((l) => Math.abs(l.bps) * 1.08),
     50,
   );
   const x = (t: number) => pad.l + ((t - t0) / (t1 - t0)) * (W - pad.l - pad.r);
@@ -75,6 +82,16 @@ export function MarkChart({
           )}
         </g>
       ))}
+      {refLines
+        .filter((l) => Number.isFinite(l.bps))
+        .map((l) => (
+          <g key={l.label}>
+            <line x1={pad.l} x2={W - pad.r} y1={y(l.bps)} y2={y(l.bps)} stroke={l.color} strokeWidth="1.5" strokeDasharray="6 4" />
+            <text x={W - pad.r - 4} y={y(l.bps) - 4} textAnchor="end" fontSize="10" fill={l.color} className="num">
+              {l.label} {fmtBps(Math.round(l.bps))}
+            </text>
+          </g>
+        ))}
       <path d={d} fill="none" stroke="var(--text)" strokeWidth="2" />
       {points.map((p) => (
         <circle key={p.txHash} cx={x(p.receivedAt)} cy={y(p.markBps)} r="2.5" fill="var(--text)">

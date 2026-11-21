@@ -11,12 +11,13 @@
     "e2e": "./e2e/run.sh"
   },
   "dependencies": {
+    "@rainbow-me/rainbowkit": "2.2.11",
     "@tanstack/react-query": "5.106.1",
     "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "viem": "2.57.16",
-    "wagmi": "3.7.11"
+    "wagmi": "2.19.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.4",

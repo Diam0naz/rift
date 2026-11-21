@@ -1,12 +1,5 @@
-import type { Metadata } from "next";
-
-import { Dashboard } from "@/components/Dashboard";
-
-export const metadata: Metadata = {
-  title: "Rift · App",
-  description: "Live Rift dashboard and trading on Unichain Sepolia.",
-};
+import { OverviewScreen } from "@/components/app/screens/Overview";
 
 export default function AppPage() {
-  return <Dashboard />;
+  return <OverviewScreen />;
 }
