@@ -28,6 +28,7 @@ export class PostgresStore implements Store {
   async init() {
     const schema = readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
     const direct = new pg.Client({ connectionString: this.directUrl });
+    direct.on("error", (e) => console.error(`postgres (schema): ${e.message}`));
     await direct.connect();
     try {
       await direct.query(schema);
@@ -43,6 +44,14 @@ export class PostgresStore implements Store {
 
   async commit(chainId: number, rows: EventRow[], scannedTo: bigint) {
     const c = await this.pool.connect();
+    // A checked-out client isn't covered by the pool's error handler: without this, a connection reset
+    // (e.g. Neon scaling the compute down) while committing is an unhandled 'error' that kills the process.
+    let broken: Error | undefined;
+    const onError = (e: Error) => {
+      broken = e;
+      console.error(`postgres client: ${e.message}`);
+    };
+    c.on("error", onError);
     try {
       await c.query("BEGIN");
       if (rows.length) {
@@ -70,10 +79,12 @@ export class PostgresStore implements Store {
       );
       await c.query("COMMIT");
     } catch (e) {
+      broken ??= e instanceof Error ? e : new Error(String(e));
       await c.query("ROLLBACK").catch(() => {});
       throw e;
     } finally {
-      c.release();
+      c.off("error", onError);
+      c.release(broken); // a failed connection is destroyed rather than returned to the pool
     }
   }
 

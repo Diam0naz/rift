@@ -1,0 +1,34 @@
+# Render Blueprint: the Rift indexer as an always-on web service (render.com → New → Blueprint → this repo).
+# It builds from the repo root because the indexer reads the contract ABIs from frontend/lib/abi.
+# Data lives in Neon, so no disk is needed. After it's live, set NEXT_PUBLIC_INDEXER_URL in the frontend
+# (Vercel) to this service's URL and redeploy the frontend.
+services:
+  - type: web
+    name: rift-indexer
+    runtime: node
+    # Free for now. It sleeps after 15 min without requests and stops following the chains while asleep;
+    # on the next request it wakes (about a minute) and catches up from its cursor in Neon. For an
+    # always-current History, switch to `plan: starter`.
+    plan: free
+    buildCommand: corepack enable && cd indexer && pnpm install --frozen-lockfile
+    startCommand: cd indexer && node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/main.ts
+    healthCheckPath: /status
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - indexer/**
+        - frontend/lib/abi/**
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # From Neon (indexer/.env.local): pooled for queries, direct for the schema. Entered in the dashboard.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      # Optional: keyed RPCs make the first Base backfill much faster than the public 200-block limit.
+      - key: BASE_SEPOLIA_RPC
+        sync: false
+      - key: UNICHAIN_SEPOLIA_RPC
+        sync: false

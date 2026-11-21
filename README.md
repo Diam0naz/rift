@@ -4,6 +4,10 @@
 
 Built for the [Reactive Omni Buildathon](https://dorahacks.io/hackathon/reactive-omni-buildathon/detail) (track: *Every Second Counts*).
 
+**Live app:** [rift-bice.vercel.app](https://rift-bice.vercel.app) (testnet).
+
+![Rift landing page: "Trade the gap.", with the recorded trip's mark falling from +4.03% to −74.36%](docs/images/landing.webp)
+
 ## The idea
 
 The same pool runs on two chains, and their prices should agree. When they don't, the gap (the **spread**) is information:
@@ -192,6 +196,8 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 - pool prices, the raw and smoothed spread, and the perp mark over time, including the trip;
 - both trip conditions against their thresholds, the underwriting pool, live premium quotes, policies, and callback latency.
 
+![Overview: the risk band with its seven checks, and the three products](docs/images/overview.webp)
+
 **App screens** (`/app`), all in the site's visual language:
 
 | Route | What you do there |
@@ -203,6 +209,17 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 | `/app/monitor` | The Reactive watch per chain (Base, Lasna, Unichain), the event path, trip conditions, the drain-to-payout sequence with Replay, latency, system |
 | `/app/activity` | Your covers, claims, positions, liquidations, deposits and withdrawals, filterable, each with its tx |
 | `/app/history` | Protocol-wide: indexer status per chain, totals (cover sold, premiums, payouts, perp volume, deposits, wallets), every trip end to end (Base origin → Lasna reaction → Unichain settlement, with seconds), and the event log of all three chains, filterable by chain, type and address |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/trade.webp" alt="Trade: the spread chart with a range picker and live mark tag, and the order ticket with size presets and payoff per 1% move"><br><sub><b>Trade</b>: spread chart and order ticket</sub></td>
+<td width="50%"><img src="docs/images/monitor.webp" alt="Monitor: what Reactive watches on Base, Lasna and Unichain, and the recorded drain-to-payout sequence"><br><sub><b>Monitor</b>: the Reactive watch on three chains</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/history.webp" alt="History: indexer live on all three chains, protocol totals, and the trip end to end: Base origin, Lasna reaction at +0s, Unichain settlement at +3s"><br><sub><b>History</b>: every trip end to end, from the indexer</sub></td>
+<td width="50%"><img src="docs/images/phone.webp" alt="The Overview screen on a phone" width="60%"><br><sub>On a phone</sub></td>
+</tr>
+</table>
 
 **Wallets:** RainbowKit over wagmi 2. Installed browser wallets are detected automatically. Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (a free Reown project ID) to add mobile/QR wallets. Every signature runs through a step list (approve → action) that explains what you're signing, simulates first so reverts show a plain reason before the wallet opens, adds 25% gas headroom, links each tx and retries from the failed step.
 
@@ -216,12 +233,15 @@ node e2e/responsive.mjs http://localhost:3000 /tmp/shots   # layout at 375 / 768
 
 `pnpm e2e` forks Unichain Sepolia with anvil. On the fork only, it resets the demo and delivers a fresh mark, starts the indexer against the fork, then builds the app with a test-only wallet connector (anvil's unlocked account) and drives every screen in headless Chrome: faucet and add-token, buying cover, a deliberate revert, deposit and withdraw, opening and closing a position, then checks that Activity and History list what it did and Monitor renders. Nothing touches the real testnet, and the test connector only exists in builds made with `NEXT_PUBLIC_E2E=1`. [`frontend/docs/TESTING.md`](frontend/docs/TESTING.md) has both scripts and a per-screen checklist for a manual pass with a real wallet.
 
+![Agent: Gemini answers with live market numbers, quotes 5,000 tUSD of cover for 2 days, and proposes it as a card to sign](docs/images/agent.webp)
+
 **Agent** (`/app/agent`): a chat that reads live state through tools and acts on the market. Gemini (`gemini-3.8-flash`) is the free default; Claude (`claude-opus-5-5`) is the premium model, paid per message in tUSD from the user's vault.
 
 - **Co-pilot:** actions become proposal cards that the user signs in their wallet (approve, then the action, simulated first).
 - **Autopilot:** the server's agent key acts through the user's `RiftAgentVault`. The contract enforces the owner's limits: daily spend, size per action, leverage, which actions are allowed, and a daily cap on agent fees. Funds leave only to RiftMarket, the owner, or the fee recipient. Owners can pause, revoke or withdraw at any time. Spending needs a wallet-signed session, so nobody can point the agent at someone else's vault.
 - **Background autopilot:** runs inside the app server (started from `instrumentation.ts`, every `AUTOPILOT_INTERVAL_SEC`, default 60 s). For each vault it applies the owner's standing rules, set on the Agent screen with a signed session: liquidation guard (default 1.3× maintenance), take-profit, stop-loss, auto-claim, auto-complete withdrawals, auto-hedge (buy cover while the risk band is amber or red), and an optional plain-language goal that the model re-checks every N minutes (≥ 15). Everything goes through the vault, so its on-chain limits still apply. Rules and an action log live in Neon Postgres (`autopilot_rules`, `autopilot_log`). `POST /api/agent/autopilot` (bearer `AUTOPILOT_SECRET`) runs one pass for hosts that need an external cron.
 - **Gemini availability:** if the configured model is overloaded (503/429), the agent retries, then falls back through `GEMINI_FALLBACK_MODELS` (default `gemini-3.7-flash,gemini-3.5-flash`), skipping an overloaded model for a minute.
+- **On Vercel:** serverless functions don't keep the background timer, so schedule the tick instead: set `CRON_SECRET` and add a cron for `/api/agent/autopilot` in `vercel.json` (Vercel Cron sends `GET` with `Authorization: Bearer $CRON_SECRET`; Hobby plans allow one run per day, Pro allows every minute). Set the same server env vars in the Vercel project.
 - **Server env** (`frontend/.env.local`, never `NEXT_PUBLIC_`): `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` (optional, enables premium), `AGENT_PRIVATE_KEY`, `AGENT_ADDRESS`, `AUTOPILOT_SECRET`; optional `GEMINI_MODEL`, `CLAUDE_MODEL`, `AGENT_PREMIUM_FEE` (default 1 tUSD). See `frontend/.env.example`.
 - **Deploy:** `AGENT_ADDRESS=0x… forge script script/DeployAgent.s.sol:DeployAgent --rpc-url unichain_sepolia --broadcast` deploys the factory wired to the market, the agent key and the fee recipient, and gives the agent key gas.
 

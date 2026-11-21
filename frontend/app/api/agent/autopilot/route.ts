@@ -6,14 +6,22 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Runs one autopilot pass now. The server already runs it in the background (AUTOPILOT_INTERVAL_SEC); this
- * is for external schedulers (cron) on hosts that can't keep a timer alive, and for tests.
+ * Runs one autopilot pass now. A long-running server already runs it in the background
+ * (AUTOPILOT_INTERVAL_SEC); serverless hosts like Vercel can't keep that timer alive, so a scheduler calls
+ * this instead (Vercel Cron: GET with CRON_SECRET; anything else: POST with AUTOPILOT_SECRET).
  */
+export const maxDuration = 60;
+
+/** AUTOPILOT_SECRET for your own scheduler; CRON_SECRET is what Vercel Cron sends (as a Bearer token, via GET). */
+function authorized(req: Request) {
+  const auth = req.headers.get("authorization");
+  return [process.env.AUTOPILOT_SECRET, process.env.CRON_SECRET].some((s) => !!s && auth === `Bearer ${s}`);
+}
+
+export const GET = (req: Request) => POST(req);
+
 export async function POST(req: Request) {
-  const secret = process.env.AUTOPILOT_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const startedAt = Date.now();
   try {
     const report = await tick();

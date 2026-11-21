@@ -95,6 +95,24 @@ curl 'localhost:42069/events?account=0xYourWallet&limit=20'
 
 ## Deploying
 
+### Render (Blueprint in the repo)
+
+1. render.com → **New → Blueprint** → pick this repo. It reads `render.yaml` and creates `rift-indexer`.
+2. Fill in `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (the values in `indexer/.env.local`, from Neon).
+   Optionally add keyed `BASE_SEPOLIA_RPC` / `UNICHAIN_SEPOLIA_RPC`.
+3. When it's live, open `https://<service>.onrender.com/status`: three chains, `"store": "postgres"`.
+4. In Vercel, set `NEXT_PUBLIC_INDEXER_URL=https://<service>.onrender.com` and redeploy the frontend
+   (it's a build-time variable).
+
+It resumes from the cursor in Neon, so nothing is re-indexed. The Blueprint uses the free plan for now:
+it sleeps after 15 minutes without requests and stops following the chains until a visit wakes it (about a
+minute, then it catches up; meanwhile the app falls back to reading Unichain from the browser). Change
+`plan: free` to `plan: starter` in `render.yaml` to keep it running continuously. Run one
+indexer per database: stop a local one once Render is live (two would only duplicate RPC traffic; writes
+are idempotent).
+
+### Elsewhere
+
 One long-running Node process (it polls the chains every few seconds), so not a serverless function. With
 Neon holding the data it needs no disk: any always-on host works (Render, Railway, Fly.io, a small VM).
 Set `DATABASE_URL` and `DATABASE_URL_UNPOOLED` in the host's environment and run `pnpm install && pnpm start`

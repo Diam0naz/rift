@@ -64,6 +64,7 @@ class PgStore implements Store {
     // Schema over the direct connection (DDL), once per process; idempotent.
     this.ready = (async () => {
       const c = new pg.Client({ connectionString: strictSsl(direct) });
+      c.on("error", (e) => console.error(`autopilot db (schema): ${e.message}`)); // a reset must not kill the server
       await c.connect();
       try {
         await c.query(SCHEMA);
