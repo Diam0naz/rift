@@ -1,0 +1,49 @@
+name: Autopilot
+
+# Free scheduler for the hosted demo: Vercel (serverless) can't keep the autopilot's timer running, and
+# Render's free plan sleeps after 15 minutes without requests. Every 10 minutes this:
+#   1. runs one autopilot pass (each vault's standing rules, through its on-chain limits);
+#   2. pings the indexer so it stays awake and History stays live (one free Render service fits in the
+#      750 free hours a month).
+# GitHub may start scheduled runs late under load, and pauses them after 60 days without repo activity.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: autopilot
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  APP_URL: https://rift-bice.vercel.app
+  INDEXER_URL: https://rift-indexer.onrender.com
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake the indexer
+        # A sleeping free instance takes about a minute to start; a failure here shouldn't skip the autopilot.
+        continue-on-error: true
+        run: |
+          curl -sS --fail-with-body --max-time 120 --retry 2 --retry-delay 10 "$INDEXER_URL/status" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('indexer', d['store'], ', '.join(f\"{c['key']} lag {c['lag']}\" for c in d['chains']))"
+
+      - name: Run one autopilot pass
+        env:
+          AUTOPILOT_SECRET: ${{ secrets.AUTOPILOT_SECRET }}
+        run: |
+          curl -sS --fail-with-body --max-time 90 --retry 2 --retry-delay 15 --retry-all-errors \
+            -X POST -H "Authorization: Bearer $AUTOPILOT_SECRET" "$APP_URL/api/agent/autopilot" \
+            | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          acted = [a for r in d.get('report', []) for a in r.get('actions', [])]
+          print(f\"autopilot: {d.get('vaults', 0)} vault(s), {len(acted)} action(s), {d.get('ms')} ms\")
+          for a in acted: print(' ', a.get('rule'), a.get('status'), a.get('summary'), a.get('tx') or a.get('reason') or '')
+          "
