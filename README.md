@@ -1,10 +1,17 @@
-# Rift
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.png">
+    <img alt="Rift" src="docs/images/logo-light.png" width="260">
+  </picture>
+</h1>
 
 **Trade the gap between chains.** Cross-chain spread perps and instant drain protection on Unichain Sepolia and Base Sepolia, settled by a Reactive Omni contract. No oracles, no keepers.
 
 Built for the [Reactive Omni Buildathon](https://dorahacks.io/hackathon/reactive-omni-buildathon/detail) (track: *Every Second Counts*).
 
 **Live app:** [rift-bice.vercel.app](https://rift-bice.vercel.app) (testnet).
+
+**The use case it's built for: bridge-failure cover.** When a bridge is drained, the tokens it minted on other chains lose their backing and crash below the originals, and holders can't sell their way out. Rift watches the bridge's escrow and the bridged token's price, and when both break it fixes every covered payout in one transaction, seconds later, from a pool funded in advance. Replayed on the 2022 Nomad exploit, Rift trips while $71.2M of the $87.5M USDC escrow is still there ([replay](#replay-the-nomad-bridge-exploit-2022)).
 
 ![Rift landing page: "Trade the gap.", with the recorded trip's mark falling from +4.03% to −74.36%](docs/images/landing.webp)
 
@@ -22,10 +29,50 @@ Both products run off **one index**: the spread computed by `RiftReactive`. One 
 | Continuous | Spread perp: long/short the Unichain-vs-Base spread in bps | every `updateMark` callback |
 | Jump | Drain Default Swap: pay a premium, receive `notional` if the vault is drained | the `trip` callback fixes every payout; buyers `claim()` it |
 
+## The use case: when a bridge breaks
+
+A bridge holds tokens in an escrow on one chain and mints copies of them on others. The copies are only worth what the escrow still holds. When the escrow is drained, the copies collapse, and they collapse faster than anyone can react: in the Nomad exploit, bridged USDC on Moonbeam fell to 4.5 cents on the dollar before a single USDC had left the escrow on Ethereum.
+
+That event shows up exactly as Rift's two conditions:
+
+- **Outflow:** the bridge's escrow (the watched vault) loses a large share of its balance within minutes.
+- **Spread:** the bridged copy trades far below the original. Its twin market is the original token's own market, so the spread *is* the holders' loss.
+
+Who it serves:
+
+- **Holders of bridged assets** (DAO treasuries, LPs, funds on the destination chain) buy cover sized to what they hold. When the bridge fails, the payout is fixed in the trip transaction and claimable right away. No claims assessment, no vote, no waiting for a post-mortem.
+- **Underwriters** earn premiums for carrying bridge risk, priced by how much cover is outstanding and by how stressed the spread already is.
+- **Traders and market makers** use the spread perp to hedge bridged inventory or to take a view on a bridge's health, from one chain, without bridging anything themselves.
+- **Bridges and protocols** can buy cover for their own users, or offer it at deposit time.
+
+## Replay: the Nomad bridge exploit (2022)
+
+To check the rule against reality, [`research/nomad-replay.mjs`](research/nomad-replay.mjs) rebuilds the Nomad exploit from chain history alone (public archive RPCs, no third-party data) and applies Rift's default trip rule to cover on Nomad-bridged USDC:
+
+- **Vault:** Nomad's ERC20 bridge escrow on Ethereum ([`0x88A6…30A3`](https://etherscan.io/address/0x88A69B4E698A4B090DF6CF5Bd7B2D47325Ad30A3)), its USDC balance.
+- **Twin market:** Nomad-bridged USDC on Moonbeam, priced through a stable-swap pool against FRAX (not Nomad-bridged, so it stays near $1).
+- **Rule:** spread ≤ −5% **and** ≥ 15% of the escrow's balance out within 5 minutes, both at once.
+
+| Time (UTC, 1 Aug 2022) | |
+|---|---|
+| 21:32:31 | First exploit transaction: WBTC leaves the escrow ([block 15259101](https://etherscan.io/block/15259101)) |
+| 22:29:12 | Bridged USDC on Moonbeam trades at **0.045**: a 95% depeg, 9 minutes before any USDC has left the escrow |
+| 22:38:23 | First USDC leaves the escrow |
+| **22:46:36** | **Rift trips**: 16% of the USDC escrow gone in 5 minutes, bridged USDC at −98%. **$71.2M of $87.5M is still in the escrow** |
+| 23:52:05 | Last USDC leaves; the escrow is empty |
+
+What it shows:
+
+- **The rule fires on a real exploit**, 8 minutes after the USDC drain starts and 65 minutes before it ends.
+- **Selling out was not an option.** The bridged token lost 95% of its value within an hour of the first exploit transaction, before the USDC drain even began, and the pool's exit price fell to about 2 cents. A fast warning alone wouldn't have saved holders; a payout fixed by a pre-funded pool would have.
+- **The two conditions did their job.** The price crashed first (the attack had already been draining other tokens for an hour); the trip waited until the watched escrow itself was being drained.
+
+Limits of the replay: one destination pool, sampled every ~1 minute (Moonbeam's 12 s blocks); FRAX as the stand-in for par; the time-weighted mark and the 2 s sustain check are not simulated (at a 95%+ gap they don't change the outcome). Whether the pool could have *paid* depends on how much capital underwriters had committed, which is a sizing question, not a detection one. Raw results: [`research/nomad-replay.json`](research/nomad-replay.json); every token's outflow timing: [`research/nomad-outflow.json`](research/nomad-outflow.json).
+
 ## Why it needs Reactive Omni
 
-- The signal lives on **two chains** (pools on Base + Unichain, vault on Base). No single contract can see both, so `RiftReactive` is the only thing that connects them.
-- Payout speed is the product. Insurance that pays weeks later doesn't help you during a hack; one that pays **~1s after the drain** lets holders hedge or exit while the market is still moving. On ~7s blocks that window was gone.
+- The signal lives on **two chains** (the twin markets, and the vault on one of them). No single contract can see both, so `RiftReactive` is the only thing that connects them.
+- Payout speed is the product. Cover that pays weeks later, after a claims process, arrives when the damage is long done. Rift fixes every payout in the trip callback, about a second after the condition holds. As the replay shows, the market for the broken asset is gone within minutes, so a fixed payout from a pool funded in advance is what holders can actually rely on.
 
 ## Architecture
 
@@ -272,6 +319,26 @@ forge test -vv
 - **Fork replay** (`test/fork/ReplayTrip.t.sol`): forks Unichain Sepolia just before the recorded trip callback below and replays that exact transaction with `vm.transact`, checking the trip and the 10,000 tUSD payout. Runs when `UNICHAIN_SEPOLIA_RPC` is set, and is skipped otherwise.
 - **Slither** (`slither.config.json`): 0 findings on `src/`. Three detectors are excluded on purpose: `timestamp` (all timing is timestamp-based by design), `incorrect-equality` (only zero checks), and `reentrancy-events` (the only external call before those events is to Reactive's system contract).
 - **CI** (`.github/workflows/ci.yml`): formatting, build, all tests and Slither on every push and pull request. Add an `UNICHAIN_SEPOLIA_RPC` repository secret to run the fork test there too.
+
+## Strengths and scope
+
+What's new here:
+
+- **No oracle.** The price signal is the twin markets themselves, read by a Reactive contract on both chains. Nothing to feed, bribe or keep alive.
+- **Payouts fixed by rules, in one transaction.** The trip settles every covered policy at once; claiming is a transfer, not a process.
+- **Two conditions, not one.** A price move alone, or an outflow alone, never pays. Manipulating a thin pool doesn't trip it; neither does a large legitimate withdrawal.
+- **One index, two products, one pool.** The perp trades the same spread that triggers cover, so the same capital earns from both, and the market keeps a live price on the risk.
+- **An AI agent that can't overspend.** Delegation is enforced by `RiftAgentVault` on-chain, not by trusting a server.
+
+What it is and isn't, and how each limit improves:
+
+| Limit | Inherent or current? | What improves it |
+|---|---|---|
+| Pays on the index, not your own loss (basis risk) | Inherent to rule-based cover; its size depends on what's watched | Watch a bridged token against its original: for its holders the spread *is* the loss, so the payout tracks it closely |
+| General hacks often don't show up as a twin-pool spread | Inherent | Scope: bridges and bridged assets, where the signal exists by construction (the replay above) |
+| Thin pools can be pushed | Current state (testnet pools have no traders) | Real deep markets, plus the time-weighted mark and the outflow condition already in place |
+| Demand is unproven | Current state | Replays of real failures (started above) and conversations with holders of bridged assets and bridge teams |
+| The perp is quiet when nothing is wrong | Inherent to the index | It's a crisis instrument, like credit protection: expect volume around events, carry the rest of the time |
 
 ## Known limits (hackathon scope)
 

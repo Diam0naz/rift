@@ -1,0 +1,276 @@
+{
+  "bridge": "0x88A69B4E698A4B090DF6CF5Bd7B2D47325Ad30A3",
+  "blocks": [
+    "15259000",
+    "15260700"
+  ],
+  "rule": "outflow >= 15% of pre-exploit balance within 5 min",
+  "results": [
+    {
+      "token": "0x3d6f0dea3ac3c607b3998e6ce14b6350721752d9",
+      "symbol": "CARDS",
+      "balanceBefore": 693615.0652357531,
+      "drainedInWindow": 739160.4517274976,
+      "drainedPct": 106.56,
+      "transfersOut": 88,
+      "firstOut": {
+        "block": 15259536,
+        "time": "2022-08-01T23:11:02.000Z",
+        "tx": "0x0f8e32acbecae417178bb74f4082768b2c6771cf84ae87032fcd61eae748602c"
+      },
+      "outflowConditionMet": {
+        "block": 15259536,
+        "time": "2022-08-01T23:11:02.000Z",
+        "tx": "0x0f8e32acbecae417178bb74f4082768b2c6771cf84ae87032fcd61eae748602c",
+        "windowOutflowPct": 21.63
+      }
+    },
+    {
+      "token": "0xe5097d9baeafb89f9bcb78c9290d545db5f9e9cb",
+      "symbol": "HBOT",
+      "balanceBefore": 11305579.726619,
+      "drainedInWindow": 11803219.973558,
+      "drainedPct": 104.4,
+      "transfersOut": 82,
+      "firstOut": {
+        "block": 15259669,
+        "time": "2022-08-01T23:39:50.000Z",
+        "tx": "0x4c37aaa229670d825812b8bf09e2a48e18f9dbcac73c3d08cfd6e44fbd6cc250"
+      },
+      "outflowConditionMet": {
+        "block": 15259683,
+        "time": "2022-08-01T23:42:35.000Z",
+        "tx": "0x6205aad71a6139269b516c57910d9d8908ed8bc711fb76e33a5fd43300c80c23",
+        "windowOutflowPct": 15.92
+      }
+    },
+    {
+      "token": "0x40eb746dee876ac1e78697b7ca85142d178a1fc8",
+      "symbol": "IAG",
+      "balanceBefore": 516068203.23784405,
+      "drainedInWindow": 516961197.66822666,
+      "drainedPct": 100.17,
+      "transfersOut": 177,
+      "firstOut": {
+        "block": 15259551,
+        "time": "2022-08-01T23:14:38.000Z",
+        "tx": "0x6640ac7d33bee6670ae81e404f7c4d6e12a9ea1358fea0f385251e1ce1b15ce2"
+      },
+      "outflowConditionMet": {
+        "block": 15259617,
+        "time": "2022-08-01T23:29:04.000Z",
+        "tx": "0x2604407c85031f92979dcf9f8579bce7ce5e96464a0e43b134bfe68a1944608b",
+        "windowOutflowPct": 15
+      }
+    },
+    {
+      "token": "0xf1a91c7d44768070f711c68f33a7ca25c8d30268",
+      "symbol": "C3",
+      "balanceBefore": 7111953.792882223,
+      "drainedInWindow": 7122372.082369,
+      "drainedPct": 100.14,
+      "transfersOut": 52,
+      "firstOut": {
+        "block": 15259589,
+        "time": "2022-08-01T23:20:24.000Z",
+        "tx": "0x700cbad83db5671cca455a49ae758920e32bd133e84c4167ddd8c698236f78d4"
+      },
+      "outflowConditionMet": {
+        "block": 15259595,
+        "time": "2022-08-01T23:23:20.000Z",
+        "tx": "0xd469ffc4957413109f42cc3511f0fc6bbe40b6a21bc3bc9f79d556c0f440e4b4",
+        "windowOutflowPct": 16.87
+      }
+    },
+    {
+      "token": "0xd417144312dbf50465b1c641d016962017ef6240",
+      "symbol": "CQT",
+      "balanceBefore": 113403733.64869688,
+      "drainedInWindow": 113553931.48688486,
+      "drainedPct": 100.13,
+      "transfersOut": 151,
+      "firstOut": {
+        "block": 15259518,
+        "time": "2022-08-01T23:07:10.000Z",
+        "tx": "0xfb0845f919080435c0f751805cfb7652ef3f231bd8012963ff718d1292cc6da4"
+      },
+      "outflowConditionMet": {
+        "block": 15259587,
+        "time": "2022-08-01T23:19:34.000Z",
+        "tx": "0xb1231bd1df219e35474dfed4f80092f297b95eb53b1b36224c2d313389f81e6d",
+        "windowOutflowPct": 20.36
+      }
+    },
+    {
+      "token": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "symbol": "WETH",
+      "balanceBefore": 22876.75983259144,
+      "drainedInWindow": 22881.506915429796,
+      "drainedPct": 100.02,
+      "transfersOut": 39,
+      "firstOut": {
+        "block": 15259121,
+        "time": "2022-08-01T21:37:57.000Z",
+        "tx": "0x4c361b7f27ef4a07a763053304cb66b3ecca52cc72f8b87b04fef9a6a8447292"
+      },
+      "outflowConditionMet": {
+        "block": 15259358,
+        "time": "2022-08-01T22:32:42.000Z",
+        "tx": "0xc4938e6f6368061194d076d44f73a8cae3a318b1ee7cf8b026abe10b7c206c2a",
+        "windowOutflowPct": 45.46
+      }
+    },
+    {
+      "token": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "symbol": "USDT",
+      "balanceBefore": 8625217.954867,
+      "drainedInWindow": 8626248.974867,
+      "drainedPct": 100.01,
+      "transfersOut": 8,
+      "firstOut": {
+        "block": 15259501,
+        "time": "2022-08-01T23:02:04.000Z",
+        "tx": "0x755d937557e026f2dd348495ee94f8b0a324f8d7a67981b6b6374c4716e5be71"
+      },
+      "outflowConditionMet": {
+        "block": 15259501,
+        "time": "2022-08-01T23:02:04.000Z",
+        "tx": "0x755d937557e026f2dd348495ee94f8b0a324f8d7a67981b6b6374c4716e5be71",
+        "windowOutflowPct": 34.79
+      }
+    },
+    {
+      "token": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "symbol": "WBTC",
+      "balanceBefore": 1028.25072399,
+      "drainedInWindow": 1028.29072399,
+      "drainedPct": 100,
+      "transfersOut": 20,
+      "firstOut": {
+        "block": 15259101,
+        "time": "2022-08-01T21:32:31.000Z",
+        "tx": "0x61497a1a8a8659a06358e130ea590e1eed8956edbd99dbb2048cfb46850a8f17"
+      },
+      "outflowConditionMet": {
+        "block": 15259101,
+        "time": "2022-08-01T21:32:31.000Z",
+        "tx": "0x40163166dfeaab8ee80e7b0acc62768cef84b7047b42b09827b29a8d77f383a9",
+        "windowOutflowPct": 19.45
+      }
+    },
+    {
+      "token": "0x853d955acef822db058eb8505911ed77f175b99e",
+      "symbol": "FRAX",
+      "balanceBefore": 7284868.263629366,
+      "drainedInWindow": 7284928.263629366,
+      "drainedPct": 100,
+      "transfersOut": 53,
+      "firstOut": {
+        "block": 15259316,
+        "time": "2022-08-01T22:25:24.000Z",
+        "tx": "0x35ae01d3a3822a9060ccd1bb020fde78aa44dbd454ec76907363c554ff436b3c"
+      },
+      "outflowConditionMet": {
+        "block": 15259460,
+        "time": "2022-08-01T22:52:57.000Z",
+        "tx": "0x070924ac7652dbbce9f4a1b8f3d824db942ebbea93a30eb38d76f8f9d92ddfeb",
+        "windowOutflowPct": 15.78
+      }
+    },
+    {
+      "token": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "symbol": "USDC",
+      "balanceBefore": 87459362.891749,
+      "drainedInWindow": 87461806.701013,
+      "drainedPct": 100,
+      "transfersOut": 316,
+      "firstOut": {
+        "block": 15259379,
+        "time": "2022-08-01T22:38:23.000Z",
+        "tx": "0xe429faca7e0571d1931988e9ad42019502b1306dc3d700eea0ac0d1d32fba7a9"
+      },
+      "outflowConditionMet": {
+        "block": 15259425,
+        "time": "2022-08-01T22:46:36.000Z",
+        "tx": "0xa5a1190443c18527512fbc824f94d7a955160fa4dbe7445ba6e734521998fbcb",
+        "windowOutflowPct": 15.98
+      }
+    },
+    {
+      "token": "0x3432b6a60d23ca0dfca7761b7ab56459d9c964d0",
+      "symbol": "FXS",
+      "balanceBefore": 119088.08227978795,
+      "drainedInWindow": 119088.08227978795,
+      "drainedPct": 100,
+      "transfersOut": 14,
+      "firstOut": {
+        "block": 15259446,
+        "time": "2022-08-01T22:50:11.000Z",
+        "tx": "0x0311e3bcb5b437beb214b35fcc779532cdfff3458e7cd549e0adf4527e72e6bb"
+      },
+      "outflowConditionMet": {
+        "block": 15259601,
+        "time": "2022-08-01T23:25:20.000Z",
+        "tx": "0x65b88b2f07e86ff60ef6544aa466b71cd8241b264a87c6bc56c230f9592dba32",
+        "windowOutflowPct": 20.99
+      }
+    },
+    {
+      "token": "0x6b175474e89094c44da98b954eedeac495271d0f",
+      "symbol": "DAI",
+      "balanceBefore": 4533633.070213998,
+      "drainedInWindow": 4533681.025522998,
+      "drainedPct": 100,
+      "transfersOut": 53,
+      "firstOut": {
+        "block": 15259517,
+        "time": "2022-08-01T23:06:56.000Z",
+        "tx": "0xb391cd0fc2ed3e2027f487529bf6adb73a7fb03c9152a71c5eed5618eacb9a57"
+      },
+      "outflowConditionMet": {
+        "block": 15259517,
+        "time": "2022-08-01T23:06:56.000Z",
+        "tx": "0x5da82147c7e19f9d85a493b3cd0e10f576aef6616ddb019c5bf39c6c5e5de7cb",
+        "windowOutflowPct": 16.54
+      }
+    },
+    {
+      "token": "0xf1dc500fde233a4055e25e5bbf516372bc4f6871",
+      "symbol": "SDL",
+      "balanceBefore": 348374.5247983598,
+      "drainedInWindow": 348244.225738,
+      "drainedPct": 99.96,
+      "transfersOut": 19,
+      "firstOut": {
+        "block": 15259523,
+        "time": "2022-08-01T23:09:23.000Z",
+        "tx": "0xfeea83a84e362244aeacf17e442ecc612dd504ab5cf277a56b5f153762a4493c"
+      },
+      "outflowConditionMet": {
+        "block": 15259713,
+        "time": "2022-08-01T23:49:04.000Z",
+        "tx": "0x71ea52a1540f8a3ecc559ab8fdd269b9538546ccc0186412ef44d5e955c3dab4",
+        "windowOutflowPct": 43.06
+      }
+    },
+    {
+      "token": "0x3431f91b3a388115f00c5ba9fdb899851d005fb5",
+      "symbol": "GERO",
+      "balanceBefore": 58615812.220356144,
+      "drainedInWindow": 58533691.02903814,
+      "drainedPct": 99.85,
+      "transfersOut": 134,
+      "firstOut": {
+        "block": 15259643,
+        "time": "2022-08-01T23:35:42.000Z",
+        "tx": "0xd09911ad4fab4818c08c11b486c0aa98bbbec003a17c9781dc9037cbf54a7c69"
+      },
+      "outflowConditionMet": {
+        "block": 15259661,
+        "time": "2022-08-01T23:38:33.000Z",
+        "tx": "0x11b1ebfe40884df2019b5cb4a35c8754f8f06aca498e8e6fd6086dd60c41e124",
+        "windowOutflowPct": 43.05
+      }
+    }
+  ]
+}
