@@ -7,14 +7,16 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "abis": "node scripts/export-abis.mjs"
+    "abis": "node scripts/export-abis.mjs",
+    "e2e": "./e2e/run.sh"
   },
   "dependencies": {
     "@tanstack/react-query": "5.106.1",
     "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "viem": "2.57.16"
+    "viem": "2.57.16",
+    "wagmi": "3.7.11"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.4",

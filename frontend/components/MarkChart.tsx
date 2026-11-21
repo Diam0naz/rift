@@ -11,7 +11,8 @@ export function MarkChart({
   tripSpreadBps,
   trip,
 }: {
-  points: MarkPoint[];
+  /** undefined while the history is still loading. */
+  points: MarkPoint[] | undefined;
   now: number;
   tripSpreadBps: number;
   /** The trip sets the mark through trip(), not MarkUpdated, so it's drawn as its own final step. */
@@ -21,10 +22,10 @@ export function MarkChart({
   const H = 180;
   const pad = { l: 56, r: 8, t: 10, b: 22 };
 
-  if (points.length === 0) {
+  if (!points || points.length === 0) {
     return (
-      <div className="flex h-[180px] items-center justify-center rounded-lg bg-panel-2 text-xs text-muted">
-        No marks in the recent window yet.
+      <div className="flex h-[180px] items-center justify-center bg-panel-2 text-xs text-muted" role="status">
+        {points ? "No marks have reached the market yet." : "Loading mark history…"}
       </div>
     );
   }
@@ -74,9 +75,9 @@ export function MarkChart({
           )}
         </g>
       ))}
-      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2" />
+      <path d={d} fill="none" stroke="var(--text)" strokeWidth="2" />
       {points.map((p) => (
-        <circle key={p.txHash} cx={x(p.receivedAt)} cy={y(p.markBps)} r="2.5" fill="var(--accent)">
+        <circle key={p.txHash} cx={x(p.receivedAt)} cy={y(p.markBps)} r="2.5" fill="var(--text)">
           <title>{`${fmtBps(p.markBps)} at ${fmtTime(p.receivedAt)} (latency ${p.latency}s)`}</title>
         </circle>
       ))}

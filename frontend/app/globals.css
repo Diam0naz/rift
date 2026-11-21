@@ -56,3 +56,18 @@ body {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Dashboard closing band: the trace scrolls left by exactly one period (half the 200%-wide SVG). */
+.seismo {
+  animation: seismo-scroll 7s linear infinite;
+}
+@keyframes seismo-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seismo {
+    animation: none;
+  }
+}

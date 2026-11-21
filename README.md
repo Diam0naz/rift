@@ -184,17 +184,28 @@ An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD7
 
 ## Frontend
 
-`frontend/` is a Next.js dashboard that reads the live deployment straight from Base Sepolia, Unichain Sepolia and Lasna. It needs no backend and no wallet. It shows:
+`frontend/` is a Next.js app that reads the live deployment straight from Base Sepolia, Unichain Sepolia and Lasna, with no backend. `/` is the site; `/app` is the dashboard and trading, in the same visual language (light and dark). The dashboard needs no wallet. It shows:
 
 - a risk band (green/amber/red) computed by fixed rules from on-chain numbers: distance to trip, pool utilization, open perp exposure, premium stress, mark freshness, RiftReactive's lREACT runway and callback funding;
 - pool prices, the raw and smoothed spread, and the perp mark over time, including the trip;
 - both trip conditions against their thresholds, the underwriting pool, live premium quotes, policies, and callback latency.
 
+**Trading** (wallet on Unichain Sepolia, via any injected wallet such as MetaMask):
+
+- **Protection:** live premium quote, buy cover, see when your cover starts, and claim payouts or refunds.
+- **Underwrite:** deposit, then request, cancel or complete a withdrawal after the delay. Shares are priced at the pool's value.
+- **Spread perp:** long or short at 1–10×, with live PnL, funding and equity, and a close button.
+- A faucet for test tUSD.
+- Every action is simulated before you sign, so a revert shows a plain reason ("market has tripped", "mark is stale", "not enough tUSD") instead of failing on-chain. Gas is estimated with a 25% buffer, because funding accrues every second and an exact estimate can run out by the time the transaction is mined.
+
 ```bash
 cd frontend
 pnpm install
 pnpm dev            # http://localhost:3000
+pnpm e2e            # end-to-end trading test on a local anvil fork (needs foundry + google-chrome)
 ```
+
+`pnpm e2e` forks Unichain Sepolia with anvil. On the fork only, it resets the demo and delivers a fresh mark, then builds the app with a test-only wallet connector (anvil's unlocked account) and drives the faucet, buying cover, a deliberate revert, deposit and withdraw, and opening and closing a position in headless Chrome. Nothing touches the real testnet, and the test connector only exists in builds made with `NEXT_PUBLIC_E2E=1`.
 
 Contract addresses live in `frontend/lib/config.ts`. After changing contracts, run `forge build` and then `pnpm abis` to regenerate the ABIs. The public Unichain RPC rate-limits, so for a shared demo set `NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC` (also `NEXT_PUBLIC_BASE_SEPOLIA_RPC`, `NEXT_PUBLIC_LASNA_RPC`) to a keyed endpoint.
 

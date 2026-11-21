@@ -3,17 +3,22 @@
 import { useMemo } from "react";
 
 import { addresses, explorers } from "@/lib/config";
+import { fmtBps, fmtCompact } from "@/lib/format";
 import { useMarkHistory, useMarket, useOrigin, useReactive } from "@/lib/hooks";
 import { computeRiskBand } from "@/lib/risk";
 
+import { BottomBand } from "./BottomBand";
+import { Logo, ThemeToggle, Ticker, useTheme } from "./brand";
+import { TradePanel } from "./TradePanel";
 import { HealthPanel, LatencyPanel, PoliciesPanel, PoolPanel, RiskBandPanel, SpreadPanel, TripPanel } from "./panels";
-import { ErrorNote, ExtLink, Skeleton } from "./ui";
+import { ErrorNote, Skeleton } from "./ui";
 
 export function Dashboard() {
   const market = useMarket();
   const reactive = useReactive();
   const origin = useOrigin();
   const history = useMarkHistory();
+  const [theme, cycleTheme] = useTheme();
 
   const m = market.data;
   const r = reactive.data;
@@ -26,56 +31,94 @@ export function Dashboard() {
     origin.isError && !o && "Base",
   ].filter(Boolean) as string[];
 
+  const ticker: [string, string][] = [
+    ["Perp mark", m ? fmtBps(m.markBps) : "…"],
+    ["Raw spread", r ? fmtBps(r.spreadBps) : "…"],
+    ["Market", m ? (m.tripped ? "Tripped · claims open" : "Armed") : "…"],
+    ["Pool value", m ? `${fmtCompact(m.poolValue)} tUSD` : "…"],
+    ["Utilization", m ? `${((Number(m.utilizationWad) / 1e18) * 100).toFixed(1)}%` : "…"],
+    ["Open interest", m ? `${fmtCompact(m.openLongSize + m.openShortSize)} tUSD` : "…"],
+    ["Reactive balance", r ? `${(Number(r.balance) / 1e18).toFixed(2)} lREACT` : "…"],
+  ];
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Rift</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted">
-            A spread perp and drain protection on the Unichain ↔ Base pool spread, settled by Reactive Network in seconds.
-          </p>
+    <div className="landing flex min-h-screen flex-col" data-theme={theme === "auto" ? undefined : theme}>
+      <div className="grain" aria-hidden />
+      {/* Background plane: the same atmosphere and grid as the site, fixed behind the app. */}
+      <div className="app-backdrop" aria-hidden>
+        <div className="atmos" />
+        <div className="grid-field" />
+        <div className="form-ring" style={{ width: 720, height: 720, right: -260, top: -220 }} />
+        <div className="form-slab hatch" style={{ width: 320, height: 420, left: -120, bottom: -120, transform: "rotate(10deg)", opacity: 0.5 }} />
+      </div>
+
+      {/* Foreground: header */}
+      <header className="relative z-20 mx-auto flex w-full max-w-[1440px] flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-12">
+        <div className="flex items-baseline gap-4">
+          <Logo />
+          <span className="kicker hidden sm:inline">App · testnet</span>
         </div>
-        <nav className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <ExtLink href={`${explorers.unichain}/address/${addresses.unichain.market}`}>RiftMarket ↗</ExtLink>
-          <ExtLink href={`${explorers.lasna}/address/${addresses.lasna.reactive}`}>RiftReactive ↗</ExtLink>
-          <ExtLink href={`${explorers.base}/address/${addresses.base.vault}`}>Vault ↗</ExtLink>
+        <nav className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <a className="kicker hover:text-[var(--bone)]" href={`${explorers.unichain}/address/${addresses.unichain.market}`} target="_blank" rel="noreferrer">
+            Market ↗
+          </a>
+          <a className="kicker hover:text-[var(--bone)]" href={`${explorers.lasna}/address/${addresses.lasna.reactive}`} target="_blank" rel="noreferrer">
+            Reactive ↗
+          </a>
+          <a className="kicker hover:text-[var(--bone)]" href={`${explorers.base}/address/${addresses.base.vault}`} target="_blank" rel="noreferrer">
+            Vault ↗
+          </a>
+          <ThemeToggle theme={theme} onToggle={cycleTheme} />
         </nav>
       </header>
 
-      {failing.length > 0 && (
-        <div className="mb-4 rounded-lg border border-bad/40 bg-bad/5 p-3">
-          <ErrorNote what={`${failing.join(", ")} state`} />
+      <Ticker items={ticker} />
+
+      <main className="relative z-10 mx-auto w-full max-w-[1440px] px-4 pb-4 pt-10 sm:px-6 lg:px-12">
+        <div className="mb-10 flex flex-wrap items-end justify-between gap-6">
+          <h1 className="display text-[clamp(2.75rem,6.5vw,6rem)]">
+            Live
+            <br />
+            <span className="outline-text">market</span>
+            <span style={{ color: "var(--rift)" }}>.</span>
+          </h1>
+          <p className="max-w-md text-sm leading-relaxed text-muted">
+            A spread perp and drain protection on the Unichain ↔ Base pool spread. Everything below is read from Base Sepolia,
+            Unichain Sepolia and Reactive Lasna every few seconds; trades settle on Unichain.
+          </p>
         </div>
-      )}
 
-      <div className="space-y-4">
-        {band ? <RiskBandPanel band={band} /> : <Skeleton className="h-40 w-full rounded-xl" />}
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            {m && r && o ? (
-              <SpreadPanel m={m} r={r} o={o} history={history.data} />
-            ) : (
-              <Skeleton className="h-80 w-full rounded-xl" />
-            )}
+        {failing.length > 0 && (
+          <div className="app-panel mb-4 p-3">
+            <ErrorNote what={`${failing.join(", ")} state`} />
           </div>
-          {r && o ? <TripPanel r={r} o={o} /> : <Skeleton className="h-80 w-full rounded-xl" />}
-        </div>
+        )}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          {m ? <PoolPanel m={m} /> : <Skeleton className="h-72 w-full rounded-xl" />}
-          {m ? <PoliciesPanel m={m} /> : <Skeleton className="h-72 w-full rounded-xl" />}
-        </div>
+        <div className="space-y-5">
+          {band ? <RiskBandPanel band={band} /> : <Skeleton className="h-56 w-full" />}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <LatencyPanel history={history.data} />
-          {m && r && o ? <HealthPanel m={m} r={r} o={o} /> : <Skeleton className="h-64 w-full rounded-xl" />}
-        </div>
-      </div>
+          {m ? <TradePanel m={m} /> : <Skeleton className="h-48 w-full" />}
 
-      <footer className="mt-8 text-xs text-muted">
-        Testnet demo. Read directly from Base Sepolia, Unichain Sepolia and Reactive Lasna every few seconds.
-      </footer>
+          <div className="grid gap-5 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              {m && r && o ? <SpreadPanel m={m} r={r} o={o} history={history.data} /> : <Skeleton className="h-80 w-full" />}
+            </div>
+            {r && o ? <TripPanel r={r} o={o} /> : <Skeleton className="h-80 w-full" />}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            {m ? <PoolPanel m={m} /> : <Skeleton className="h-72 w-full" />}
+            {m ? <PoliciesPanel m={m} /> : <Skeleton className="h-72 w-full" />}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <LatencyPanel history={history.data} />
+            {m && r && o ? <HealthPanel m={m} r={r} o={o} /> : <Skeleton className="h-64 w-full" />}
+          </div>
+        </div>
+      </main>
+
+      <BottomBand spreadBps={r?.spreadBps} tripSpreadBps={r?.params.tripSpreadBps} tripped={m?.tripped} />
     </div>
   );
 }

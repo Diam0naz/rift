@@ -9,7 +9,7 @@ export const lasna = defineChain({
   blockExplorers: { default: { name: "Reactscan", url: "https://lasna.reactscan.net" } },
 });
 
-const rpc = {
+export const rpc = {
   base: process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC ?? "https://sepolia.base.org",
   unichain: process.env.NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC ?? "https://sepolia.unichain.org",
   lasna: process.env.NEXT_PUBLIC_LASNA_RPC ?? "https://lasna-rpc.rnk.dev/",

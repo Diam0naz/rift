@@ -1,0 +1,450 @@
+/*
+ * Rift landing page. Three depth planes:
+ *   .plane-bg  atmosphere: gradients, grid, grain, outlined forms (moves slowest)
+ *   .plane-mid content cards and cropped imagery, pushed back in Z with soft shadows
+ *   .plane-fg  display type and calls to action, closest to the viewer
+ * --sy (scroll px) and --mx/--my (pointer, -1..1) are set on .landing by a small script;
+ * each plane multiplies them by its own factor, which is what produces the parallax.
+ *
+ * Theme: dark by default; light follows the OS, and data-theme="light" | "dark" on .landing
+ * (the nav toggle) overrides it. Tokens are semantic: --ink is the page, --bone is the text, so
+ * inverted elements (cream buttons, cream cards) flip naturally between themes.
+ */
+
+.landing {
+  --ink: #09090b;
+  --ink-2: #111114;
+  --ink-3: #18181c;
+  --bone: #ece7dc;
+  --bone-dim: #a8a397;
+  --mute: #6f6c66;
+  --rift: #ff4433;
+  --cold: #8ea4ff;
+  --line: rgba(236, 231, 220, 0.12);
+  --line-strong: rgba(236, 231, 220, 0.28);
+  --on-rift: #09090b; /* text on the red ticker, dark in both themes */
+  --glow-rift: rgba(255, 68, 51, 0.32);
+  --glow-cold: rgba(142, 164, 255, 0.22);
+  --glow-soft: rgba(255, 255, 255, 0.03);
+  --shadow-far: rgba(0, 0, 0, 0.85);
+  --shadow-near: rgba(0, 0, 0, 0.6);
+  --grain-opacity: 0.09;
+  --grain-blend: overlay;
+  --ok: #3fb67b;
+  --warn: #e0a33a;
+  --sy: 0;
+  /* Bridge: the app's components use these names (globals.css); inside .landing they follow the site palette. */
+  --bg: var(--ink);
+  --panel: var(--ink-2);
+  --panel-2: var(--ink-3);
+  --text: var(--bone);
+  --muted: var(--bone-dim);
+  --accent: var(--cold);
+  --green: var(--ok);
+  --amber: var(--warn);
+  --red: var(--rift);
+  --font-sans: var(--lf-body), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: var(--lf-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --mx: 0;
+  --my: 0;
+  color-scheme: dark;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--lf-body), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  overflow-x: clip;
+  position: relative;
+}
+
+/* Light tokens, applied by the OS setting (unless the toggle forces dark) or by the toggle. */
+@media (prefers-color-scheme: light) {
+  .landing:not([data-theme="dark"]) {
+    --ink: #f2eee5;
+    --ink-2: #ebe6da;
+    --ink-3: #e2dccd;
+    --bone: #111114;
+    --bone-dim: #4a4740;
+    --mute: #77736b;
+    --rift: #e1311d;
+    --cold: #3a56d4;
+    --line: rgba(17, 17, 20, 0.1);
+    --line-strong: rgba(17, 17, 20, 0.28);
+    --glow-rift: rgba(225, 49, 29, 0.16);
+    --glow-cold: rgba(58, 86, 212, 0.14);
+    --glow-soft: rgba(255, 255, 255, 0.5);
+    --shadow-far: rgba(40, 32, 20, 0.28);
+    --shadow-near: rgba(40, 32, 20, 0.18);
+    --grain-opacity: 0.12;
+    --grain-blend: multiply;
+    --ok: #1f7a4c;
+    --warn: #9a5b06;
+    color-scheme: light;
+  }
+}
+.landing[data-theme="light"] {
+  --ink: #f2eee5;
+  --ink-2: #ebe6da;
+  --ink-3: #e2dccd;
+  --bone: #111114;
+  --bone-dim: #4a4740;
+  --mute: #77736b;
+  --rift: #e1311d;
+  --cold: #3a56d4;
+  --line: rgba(17, 17, 20, 0.1);
+  --line-strong: rgba(17, 17, 20, 0.28);
+  --glow-rift: rgba(225, 49, 29, 0.16);
+  --glow-cold: rgba(58, 86, 212, 0.14);
+  --glow-soft: rgba(255, 255, 255, 0.5);
+  --shadow-far: rgba(40, 32, 20, 0.28);
+  --shadow-near: rgba(40, 32, 20, 0.18);
+  --grain-opacity: 0.12;
+  --grain-blend: multiply;
+  --ok: #1f7a4c;
+  --warn: #9a5b06;
+  color-scheme: light;
+}
+
+/* Smooth in-page scrolling for the nav's section links; headings stop short of the top edge. */
+html:has(.landing) {
+  scroll-behavior: smooth;
+}
+.landing section[id] {
+  scroll-margin-top: 1.5rem;
+}
+
+.landing ::selection {
+  background: var(--rift);
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------- type */
+
+.display {
+  font-family: var(--lf-display), "Arial Black", "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-variation-settings: "wdth" 125;
+  letter-spacing: -0.045em;
+  line-height: 0.82;
+  text-transform: uppercase;
+}
+
+.display-tight {
+  font-family: var(--lf-display), "Arial Black", "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  font-weight: 800;
+  font-stretch: 112%;
+  font-variation-settings: "wdth" 112;
+  letter-spacing: -0.03em;
+  line-height: 0.92;
+  text-transform: uppercase;
+}
+
+.outline-text {
+  color: transparent;
+  -webkit-text-stroke: 2px var(--bone);
+}
+
+.mono {
+  font-family: var(--lf-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.kicker {
+  font-family: var(--lf-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+
+/* ---------------------------------------------------------------- depth planes */
+
+.stage {
+  perspective: 1400px;
+  perspective-origin: 50% 30%;
+  position: relative;
+}
+
+.plane-bg {
+  transform: translate3d(calc(var(--mx) * -10px), calc(var(--sy) * 0.18px + var(--my) * -8px), 0);
+  will-change: transform;
+}
+
+.plane-mid {
+  transform-style: preserve-3d;
+  transform: translate3d(calc(var(--mx) * 14px), calc(var(--sy) * -0.06px + var(--my) * 10px), -60px)
+    rotateY(calc(var(--mx) * -3deg)) rotateX(calc(var(--my) * 2deg));
+  will-change: transform;
+}
+
+.plane-fg {
+  position: relative;
+  z-index: 3;
+  transform: translate3d(calc(var(--mx) * 4px), calc(var(--sy) * -0.12px), 0);
+}
+
+/* ---------------------------------------------------------------- atmosphere */
+
+.atmos {
+  position: absolute;
+  inset: -10% -5%;
+  pointer-events: none;
+  background:
+    radial-gradient(48% 42% at 12% 88%, var(--glow-rift), transparent 70%),
+    radial-gradient(40% 46% at 92% 8%, var(--glow-cold), transparent 70%),
+    radial-gradient(70% 60% at 60% 60%, var(--glow-soft), transparent 70%);
+}
+
+.grid-field {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 96px 96px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 35%, transparent 85%);
+  opacity: 0.55;
+}
+
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.hatch {
+  background-image: repeating-linear-gradient(-45deg, var(--line) 0 1px, transparent 1px 9px);
+}
+
+.dots {
+  background-image: radial-gradient(var(--line-strong) 1px, transparent 1.2px);
+  background-size: 14px 14px;
+}
+
+.form-ring {
+  position: absolute;
+  border: 1px solid var(--line-strong);
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+.form-slab {
+  position: absolute;
+  border: 1px solid var(--line-strong);
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- frames, cards, buttons */
+
+.frame {
+  position: relative;
+  background: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  box-shadow:
+    0 40px 80px -30px var(--shadow-far),
+    0 18px 30px -18px var(--shadow-near);
+}
+
+.frame-recessed {
+  transform: translateZ(-120px) scale(0.94);
+}
+
+.frame-tilt-l {
+  transform: rotateY(14deg) rotateZ(-1.5deg);
+}
+
+.frame-tilt-r {
+  transform: rotateY(-16deg) rotateZ(1deg);
+}
+
+.corner-ticks::before,
+.corner-ticks::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--rift);
+  border-style: solid;
+  pointer-events: none;
+}
+.corner-ticks::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+.corner-ticks::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+.btn-brutal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.05rem 1.6rem;
+  background: var(--bone);
+  color: var(--ink);
+  font-family: var(--lf-display), "Arial Black", "Helvetica Neue", Arial, ui-sans-serif, sans-serif;
+  font-weight: 800;
+  font-stretch: 115%;
+  font-variation-settings: "wdth" 115;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border: 2px solid var(--bone);
+  box-shadow: 8px 8px 0 var(--rift);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.btn-brutal:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 11px 11px 0 var(--rift);
+}
+.btn-brutal:active {
+  transform: translate(4px, 4px);
+  box-shadow: 4px 4px 0 var(--rift);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.05rem 1.4rem;
+  border: 2px solid var(--line-strong);
+  color: var(--bone);
+  font-family: var(--lf-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: border-color 0.15s ease;
+}
+.btn-ghost:hover {
+  border-color: var(--bone);
+}
+
+.btn-brutal:focus-visible,
+.btn-ghost:focus-visible,
+.landing a:focus-visible {
+  outline: 3px solid var(--cold);
+  outline-offset: 4px;
+}
+
+/* ---------------------------------------------------------------- ticker */
+
+.ticker {
+  display: flex;
+  width: max-content;
+  animation: ticker 48s linear infinite;
+}
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--rift);
+  box-shadow: 0 0 0 0 rgba(255, 68, 51, 0.7);
+  animation: pulse 1.8s ease-out infinite;
+}
+@keyframes pulse {
+  to {
+    box-shadow: 0 0 0 10px rgba(255, 68, 51, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing) {
+    scroll-behavior: auto;
+  }
+  .plane-bg,
+  .plane-mid,
+  .plane-fg {
+    transform: none !important;
+  }
+  .ticker,
+  .live-dot {
+    animation: none;
+  }
+  .btn-brutal,
+  .btn-ghost {
+    transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .frame-tilt-l,
+  .frame-tilt-r,
+  .frame-recessed {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- app (/app) */
+
+/* The app shares the site's planes: a fixed atmosphere behind everything, content above it. */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.app-backdrop .grid-field {
+  opacity: 0.35;
+}
+
+/* Mid-ground panel: hard edges, hairline border, stacked soft shadows (same recipe as .frame). */
+.app-panel {
+  position: relative;
+  background: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  box-shadow:
+    0 30px 60px -36px var(--shadow-far),
+    0 12px 24px -16px var(--shadow-near);
+}
+
+/* Compact versions of the site's buttons for forms. */
+.btn-brutal.btn-sm {
+  padding: 0.7rem 1.1rem;
+  font-size: 0.85rem;
+  box-shadow: 5px 5px 0 var(--rift);
+}
+.btn-brutal.btn-sm:hover {
+  box-shadow: 7px 7px 0 var(--rift);
+}
+.btn-brutal.btn-sm:active {
+  box-shadow: 2px 2px 0 var(--rift);
+}
+.btn-brutal:disabled,
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-ghost.btn-sm {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.68rem;
+}
+
+.app-input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  background: var(--ink-3);
+  padding: 0.65rem 0.8rem;
+  color: var(--bone);
+  outline: none;
+}
+.app-input:focus-visible {
+  border-color: var(--bone);
+  outline: 2px solid var(--cold);
+  outline-offset: 2px;
+}

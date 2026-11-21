@@ -10,34 +10,54 @@ import { Bar, Card, ExtLink, LevelDot, Pill, Stat } from "./ui";
 
 const levelText: Record<Level, string> = { green: "Green", amber: "Amber", red: "Red" };
 const levelRing: Record<Level, string> = {
-  green: "border-good/50 bg-good/5",
-  amber: "border-warn/50 bg-warn/5",
-  red: "border-bad/50 bg-bad/5",
+  green: "",
+  amber: "!border-warn/60",
+  red: "!border-bad/60",
 };
 
 // ---------------------------------------------------------------- risk band
 
 export function RiskBandPanel({ band }: { band: RiskBand }) {
+  // One word in display type carries the state; the sentence underneath explains it.
+  const word = band.headline.startsWith("Tripped")
+    ? "Tripped"
+    : band.level === "green"
+      ? "Calm"
+      : band.level === "amber"
+        ? "Elevated"
+        : "High risk";
   return (
-    <section className={`rounded-xl border p-4 sm:p-5 ${levelRing[band.level]}`} aria-live="polite">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted">
-          <LevelDot level={band.level} /> Risk band · {levelText[band.level]}
-        </span>
+    <section className={`app-panel corner-ticks p-5 sm:p-7 ${levelRing[band.level]}`} aria-live="polite">
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="min-w-0 lg:col-span-5">
+          <span className="kicker flex items-center gap-2">
+            <LevelDot level={band.level} /> <span style={{ color: "var(--rift)" }}>01 /</span> Risk band · {levelText[band.level]}
+          </span>
+          <p
+            className="display mt-5 text-[clamp(2.5rem,4.4vw,4.25rem)]"
+            style={{ color: band.level === "red" ? "var(--rift)" : band.level === "amber" ? "var(--warn)" : "var(--bone)" }}
+          >
+            {word}.
+          </p>
+          <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted">{band.headline}</p>
+        </div>
+        <ul className="grid gap-px self-start border sm:grid-cols-2 lg:col-span-7" style={{ borderColor: "var(--line-strong)", background: "var(--line-strong)" }}>
+          {band.drivers.map((d) => (
+            <li key={d.key} className={`p-4 ${d.level === "red" ? "hatch" : ""}`} style={{ background: "var(--ink-2)" }} title={d.detail}>
+              <div className="kicker flex items-center gap-2 !text-[0.62rem]">
+                <LevelDot level={d.level} />
+                {d.label}
+              </div>
+              <div className="num mt-2 text-base">{d.value}</div>
+              <div className="mt-1 text-xs leading-snug text-muted">{d.detail}</div>
+            </li>
+          ))}
+          {band.drivers.length % 2 === 1 && (
+            // Odd count: fill the last cell with a designed pattern rather than a blank block.
+            <li aria-hidden className="hatch hidden sm:block" style={{ background: "var(--ink-2)" }} />
+          )}
+        </ul>
       </div>
-      <p className="mt-2 text-lg font-medium sm:text-xl">{band.headline}</p>
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {band.drivers.map((d) => (
-          <li key={d.key} className="rounded-lg border border-line bg-panel p-3" title={d.detail}>
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <LevelDot level={d.level} />
-              {d.label}
-            </div>
-            <div className="num mt-1 text-sm">{d.value}</div>
-            <div className="mt-1 text-xs leading-snug text-muted">{d.detail}</div>
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }
@@ -59,6 +79,8 @@ export function SpreadPanel({
   const lag = Number(r.spreadBps - r.smoothedSpreadBps);
   return (
     <Card
+      index="03"
+      ticks
       title="Unichain ↔ Base spread"
       subtitle="Pool prices, the spread RiftReactive computes, and the time-weighted mark the perp settles on."
       right={<Pill tone="muted">{r.marksSent.toString()} marks sent</Pill>}
@@ -75,7 +97,7 @@ export function SpreadPanel({
       </div>
       <div className="mt-4">
         <MarkChart
-          points={history ?? []}
+          points={history}
           now={Number(m.now)}
           tripSpreadBps={Number(r.params.tripSpreadBps)}
           trip={m.tripped ? { at: Number(m.trippedAt), bps: Number(m.tripMark) } : undefined}
@@ -115,6 +137,7 @@ export function TripPanel({ r, o }: { r: ReactiveState; o: OriginState }) {
 
   return (
     <Card
+      index="04"
       title="Trip conditions"
       subtitle="A payout needs both: a sustained spread break and a real drain."
       right={
@@ -167,7 +190,7 @@ export function PoolPanel({ m }: { m: MarketState }) {
   const tone: Level = u >= 0.95 ? "red" : u >= kink ? "amber" : "green";
   const sharePrice = m.totalShares > 0n ? Number(m.poolValue) / Number(m.totalShares) : 1;
   return (
-    <Card title="Underwriting pool" subtitle="Backs every policy and is the counterparty to the perp.">
+    <Card index="05" title="Underwriting pool" subtitle="Backs every policy and is the counterparty to the perp.">
       <div className="grid grid-cols-2 gap-4">
         <Stat label="Pool value" value={fmtCompact(m.poolValue)} hint={`share price ${sharePrice.toFixed(4)}`} />
         <Stat label="Cash" value={fmtCompact(m.poolAssets)} hint={`reserved ${fmtCompact(m.reservedLiquidity)}`} />
@@ -187,7 +210,7 @@ export function PoolPanel({ m }: { m: MarketState }) {
         <Bar value={u} max={1} marker={kink} tone={tone} label="Pool utilization" />
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 rounded-lg bg-panel-2 p-3">
+      <div className="mt-5 grid grid-cols-2 gap-4 bg-panel-2 p-3">
         <Stat
           label="Quote: 10,000 cover · 1 day"
           value={m.quote === null ? "no capacity" : `${fmtToken(m.quote)} tUSD`}
@@ -223,6 +246,7 @@ function policyStatus(p: MarketState["policies"][number], now: bigint): { text: 
 export function PoliciesPanel({ m }: { m: MarketState }) {
   return (
     <Card
+      index="06"
       title="Drain protection policies"
       subtitle={`${m.policiesCount.toString()} sold · ${fmtCompact(m.activeNotional)} live cover`}
     >
@@ -273,12 +297,16 @@ export function LatencyPanel({ history }: { history: MarkPoint[] | undefined }) 
   const median = lat.length ? [...lat].sort((a, b) => a - b)[Math.floor(lat.length / 2)] : null;
   return (
     <Card
+      index="07"
       title="Callback latency"
       subtitle="Reactive's clock when the mark was computed → Unichain's clock when it landed."
       right={median !== null ? <Pill tone="muted">median {median}s</Pill> : undefined}
+      className="flex flex-col"
     >
       {recent.length === 0 ? (
-        <p className="text-sm text-muted">Waiting for marks…</p>
+        <p className="text-sm text-muted" role="status">
+          {history ? "No marks have reached the market yet." : "Loading mark history…"}
+        </p>
       ) : (
         <ul className="divide-y divide-line/60 text-sm">
           {recent.map((p) => (
@@ -292,6 +320,7 @@ export function LatencyPanel({ history }: { history: MarkPoint[] | undefined }) 
         </ul>
       )}
       <p className="mt-3 text-xs text-muted">The chains&apos; clocks differ by about a second, so 0–1s readings are within noise.</p>
+      {median !== null && <LatencyFigure median={median} latencies={recent.map((p) => p.latency).reverse()} />}
     </Card>
   );
 }
@@ -300,7 +329,7 @@ export function LatencyPanel({ history }: { history: MarkPoint[] | undefined }) 
 
 export function HealthPanel({ m, r, o }: { m: MarketState; r: ReactiveState; o: OriginState }) {
   return (
-    <Card title="System" subtitle="Chain heads and the funding that keeps settlement running.">
+    <Card index="08" title="System" subtitle="Chain heads and the funding that keeps settlement running.">
       <dl className="grid grid-cols-1 gap-y-1 text-sm">
         <Row k="Base Sepolia head" v={fmtTime(o.now)} />
         <Row k="Unichain Sepolia head" v={`#${m.blockNumber.toString()} · ${fmtTime(m.now)}`} />
@@ -320,6 +349,34 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex justify-between gap-3 border-b border-line/60 py-1.5">
       <dt className="text-muted">{k}</dt>
       <dd className="num text-right">{v}</dd>
+    </div>
+  );
+}
+
+/** Fills the latency card's lower half: the median as a large figure, plus one bar per recent mark. */
+function LatencyFigure({ median, latencies }: { median: number; latencies: number[] }) {
+  const max = Math.max(4, ...latencies);
+  return (
+    <div className="mt-auto flex items-end justify-between gap-6 border-t border-line pt-6">
+      <div>
+        <div className="text-xs text-muted">Median, mark to market</div>
+        <div className="display" style={{ fontSize: "clamp(4rem, 9vw, 6.5rem)", textTransform: "none" }}>
+          {median}
+          <span className="text-muted" style={{ fontSize: "0.45em" }}>
+            s
+          </span>
+        </div>
+      </div>
+      <div className="flex h-24 items-end gap-1.5" aria-label={`Recent latencies: ${latencies.join(", ")} seconds`} role="img">
+        {latencies.map((l, i) => (
+          <div
+            key={i}
+            className="w-3"
+            style={{ background: "var(--rift)", height: `${Math.max(8, (l / max) * 100)}%` }}
+            title={`${l}s`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
