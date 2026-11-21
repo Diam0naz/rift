@@ -182,6 +182,22 @@ The fork test in `test/fork/` replays this trip callback and the claim against U
 
 An earlier deployment, before the safeguards, is still on-chain (market `0xC8AD79Ea2E567Af771F4c7590a4de1783F6428b5`, RiftReactive `0x7C8b13329EDcbFbD8405833F198024ca7E3b4276`) but no longer used.
 
+## Frontend
+
+`frontend/` is a Next.js dashboard that reads the live deployment straight from Base Sepolia, Unichain Sepolia and Lasna. It needs no backend and no wallet. It shows:
+
+- a risk band (green/amber/red) computed by fixed rules from on-chain numbers: distance to trip, pool utilization, open perp exposure, premium stress, mark freshness, RiftReactive's lREACT runway and callback funding;
+- pool prices, the raw and smoothed spread, and the perp mark over time, including the trip;
+- both trip conditions against their thresholds, the underwriting pool, live premium quotes, policies, and callback latency.
+
+```bash
+cd frontend
+pnpm install
+pnpm dev            # http://localhost:3000
+```
+
+Contract addresses live in `frontend/lib/config.ts`. After changing contracts, run `forge build` and then `pnpm abis` to regenerate the ABIs. The public Unichain RPC rate-limits, so for a shared demo set `NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC` (also `NEXT_PUBLIC_BASE_SEPOLIA_RPC`, `NEXT_PUBLIC_LASNA_RPC`) to a keyed endpoint.
+
 ## Tests and verification
 
 ```bash
