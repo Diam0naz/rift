@@ -110,6 +110,9 @@ try {
   await waitText("test tUSD");
   await click("Get 10,000 test tUSD");
   await expectDone("Faucet");
+  await click("Add tUSD to wallet");
+  await waitText("tUSD added");
+  step("  ✓ Add tUSD to wallet: added");
 
   step("2. protect: approve + buy 1,000 cover for 1 day (two-step flow)");
   await clickLink("Protect");

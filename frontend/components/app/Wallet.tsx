@@ -2,12 +2,12 @@
 
 import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import { useEffect, useState } from "react";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useConnect, useSwitchChain, useWatchAsset } from "wagmi";
 
 import { mockTokenAbi } from "@/lib/abi/MockToken";
 import { useAccountState } from "@/lib/account";
 import { addresses } from "@/lib/config";
-import { fmtToken } from "@/lib/format";
+import { fmtToken, shortHex } from "@/lib/format";
 import { useTx } from "@/lib/tx";
 import { E2E, MARKET_CHAIN_ID } from "@/lib/wagmi";
 
@@ -116,7 +116,59 @@ export function AccountBar() {
           Get {a ? fmtToken(a.faucetAmount, 0) : "10,000"} test tUSD
         </button>
         <TxStatus state={tx.state} />
+        <AddTokenButton />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Imports tUSD into the connected wallet (EIP-747 wallet_watchAsset) on Unichain Sepolia, switching network
+ * first if needed. Wallets only list a custom token after it's imported, and only on the right network.
+ * The address stays visible with a copy button for wallets that don't support the request.
+ */
+function AddTokenButton() {
+  const { chainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const { watchAssetAsync } = useWatchAsset();
+  const [state, setState] = useState<{ kind: "idle" | "busy" | "added" | "error"; msg?: string }>({ kind: "idle" });
+  const [copied, setCopied] = useState(false);
+  const token = addresses.unichain.collateral;
+
+  const add = async () => {
+    setState({ kind: "busy" });
+    try {
+      if (chainId !== MARKET_CHAIN_ID) await switchChainAsync({ chainId: MARKET_CHAIN_ID });
+      const ok = await watchAssetAsync({ type: "ERC20", options: { address: token, symbol: "tUSD", decimals: 18 } });
+      setState(ok ? { kind: "added" } : { kind: "error", msg: "Your wallet didn't add it. Use the address below." });
+    } catch (err) {
+      const msg = err instanceof Error && /reject|denied/i.test(err.message) ? "You dismissed the request." : "Your wallet doesn't support adding tokens this way. Use the address below.";
+      setState({ kind: "error", msg });
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked: the address is visible to copy by hand.
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1 pt-1">
+      <button type="button" className="btn-ghost btn-sm" onClick={add} disabled={state.kind === "busy"}>
+        {state.kind === "added" ? "tUSD added ✓" : state.kind === "busy" ? "Check your wallet…" : "Add tUSD to wallet"}
+      </button>
+      <span className="mono flex items-center gap-2 text-xs text-muted" aria-live="polite">
+        {state.kind === "error" && <span style={{ color: "var(--warn)" }}>{state.msg}</span>}
+        <span title={token}>tUSD {shortHex(token, 4)} · Unichain Sepolia (1301)</span>
+        <button type="button" className="underline underline-offset-4 hover:text-[var(--bone)]" onClick={copy}>
+          {copied ? "copied" : "copy"}
+        </button>
+      </span>
     </div>
   );
 }
