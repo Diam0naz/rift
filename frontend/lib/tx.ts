@@ -110,6 +110,8 @@ export type FlowStep = {
   call: Call;
   /** Checked right before the step runs; true skips it (e.g. allowance already sufficient). */
   skip?: () => boolean | Promise<boolean>;
+  /** Builds the call right before it runs, when its arguments depend on state at that moment. */
+  prepare?: () => Promise<Call>;
 };
 
 export type StepState =
@@ -147,7 +149,8 @@ export function useTxFlow() {
           }
           let hash: Hash | undefined;
           try {
-            const r = await send(step.call, (status, h) => {
+            const call = step.prepare ? await step.prepare() : step.call;
+            const r = await send(call, (status, h) => {
               if (h) hash = h;
               update(i, { status, hash: h });
             });

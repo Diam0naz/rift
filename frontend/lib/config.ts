@@ -43,6 +43,10 @@ export const addresses = {
   lasna: {
     reactive: "0xAD0983eBF145C8f8184bf219E795aC63fEE58B78",
   },
+  agent: {
+    /** RiftAgentVaultFactory on Unichain Sepolia: one limit-enforcing vault per user for the AI agent. */
+    factory: "0x390232484C2873945a1Dc1425370Ef3080495b8B",
+  },
 } as const satisfies Record<string, Record<string, Address>>;
 
 /** Block the market was deployed in; event history is read from here. */

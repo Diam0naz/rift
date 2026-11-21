@@ -20,6 +20,7 @@ export const NAV = [
   { href: "/app/monitor", label: "Monitor" },
   { href: "/app/activity", label: "Activity" },
   { href: "/app/history", label: "History" },
+  { href: "/app/agent", label: "Agent" },
 ] as const;
 
 /**

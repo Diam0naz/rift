@@ -64,8 +64,8 @@ async function click(text, ms = 30000) {
 async function fill(label, value) {
   const ok = await evalJs(`(() => {
     const lab = [...document.querySelectorAll('label')].find(l => l.textContent.trim().toLowerCase().startsWith(${JSON.stringify(label.toLowerCase())}));
-    const el = lab && lab.querySelector('input,select'); if (!el) return 'missing';
-    const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    const el = lab && lab.querySelector('input,select,textarea'); if (!el) return 'missing';
+    const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
     el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
     return 'ok'; })()`);
@@ -79,6 +79,42 @@ async function expectDone(prefix) {
   const st = await waitAnyStatus(prefix);
   if (!st.includes("done.")) throw new Error(`${prefix} -> ${st}`);
   step(`  ✓ ${st}`);
+}
+
+/** Types into the agent chat and sends; waits for the reply (or a note) to land. */
+async function chat(text) {
+  const before = await evalJs(`document.querySelectorAll('[data-action-status], .kicker').length`);
+  const ok = await evalJs(`(() => { const el = document.getElementById('agent-input'); if (!el) return 'missing';
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(text)});
+    el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
+  if (ok !== "ok") throw new Error(`chat input: ${ok}`);
+  await click("Send");
+  const end = Date.now() + 120000;
+  while (Date.now() < end) {
+    const busy = await evalJs(`document.body.innerText.includes('is reading the chain')`);
+    const n = await evalJs(`document.querySelectorAll('[data-action-status], .kicker').length`);
+    if (!busy && n > before) return;
+    await sleep(400);
+  }
+  throw new Error(`no reply to: ${text}`);
+}
+/** Waits for the newest agent action card to reach `status`; returns its reason text (if any). */
+async function expectAction(status, ms = 120000) {
+  const end = Date.now() + ms;
+  let last = "none";
+  while (Date.now() < end) {
+    last = await evalJs(`(() => { const all = [...document.querySelectorAll('[data-action-status]')]; const a = all[all.length - 1]; return a ? a.dataset.actionStatus + '|' + a.innerText : 'none'; })()`);
+    if (last.startsWith(status + "|")) return last.split("|").slice(1).join("|");
+    await sleep(500);
+  }
+  const notes = await evalJs(`[...document.querySelectorAll('.mono')].map(e => e.innerText).filter(t => t.length > 20).slice(-3).join(' / ')`);
+  throw new Error(`agent action not ${status}: ${last.slice(0, 200)} | ${notes.slice(0, 300)}`);
+}
+
+/** Clicks the <label> whose text starts with `text` (toggles its checkbox). */
+async function clickLabel(text) {
+  const ok = await evalJs(`(() => { const l = [...document.querySelectorAll('label')].find(l => l.textContent.trim().toLowerCase().startsWith(${JSON.stringify(text.toLowerCase())})); if (!l) return 'missing'; l.click(); return 'ok'; })()`);
+  if (ok !== "ok") throw new Error(`label "${text}": ${ok}`);
 }
 
 async function clickLink(text) {
@@ -201,6 +237,68 @@ try {
   await clickLink("Monitor");
   await waitText("Drain to payout");
   step("  ✓ Monitor rendered");
+
+  step("9. agent: create an agent vault (default limits: 1,000/day, 5,000 max size, 5x) and fund it");
+  await clickLink("Agent");
+  await waitText("Create your agent vault");
+  await click("Create vault");
+  await expectDone("Create vault");
+  await waitText("agent on", 30000);
+  await click("Fund");
+  await expectDone("Fund vault");
+  await shot("e2e-6-agent-vault");
+
+  step("10. autopilot: the agent opens a position from the vault with its own key");
+  await click("Autopilot");
+  await chat("open a 1000 tUSD long at 2x");
+  await expectAction("done");
+  step("  ✓ position opened through the vault (session signed in the wallet)");
+
+  step("11. contract-enforced limit: a deposit over today's spend cap is rejected on-chain");
+  await chat("deposit 900");
+  const reason = await expectAction("rejected");
+  if (!/daily spend limit/i.test(reason)) throw new Error(`expected the spend-limit reason, got: ${reason}`);
+  step(`  ✓ rejected: ${reason.split("\n").find((l) => /limit/i.test(l))}`);
+
+  step("12. agent payment: a premium (Claude) message is charged from the vault under its fee cap");
+  await click("Claude");
+  await chat("how is the market");
+  await waitText("premium fee", 90000);
+  step("  ✓ premium fee charged on-chain");
+  await click("Gemini");
+
+  step("13. co-pilot: the agent proposes, the user signs in the wallet");
+  await click("Co-pilot");
+  await chat("buy cover 1000 for 1 day");
+  await expectAction("proposed");
+  await click("Review & sign");
+  await expectFlowDone("Proposal");
+  await shot("e2e-7-agent-chat");
+
+  step("14. background autopilot: a stop-loss rule closes the vault's position on its own");
+  await waitText("Autopilot rules");
+  await waitText("Background activity");
+  await fill("Stop loss", "0"); // any loss after funding (a long pays funding while the mark is positive)
+  await click("Save rules");
+  await waitText("Saved.");
+  await waitText("Stopped out", 90000); // the runner's next pass (every 4 s), no user action
+  step("  ✓ closed by the background runner, logged with its tx");
+
+  step("15. background goal: the model checks the owner's standing goal and acts through the vault");
+  await clickLabel("Goal: let the model");
+  await fill("Goal, in your words", "deposit 50");
+  await fill("Check every", "0");
+  await click("Save rules");
+  await waitText("Saved.");
+  await waitText("Deposit 50", 90000);
+  step("  ✓ goal acted on in the background");
+  await shot("e2e-8-autopilot");
+
+  step("16. the on-demand tick endpoint (for external cron) still answers");
+  const tick = await fetch(new URL("/api/agent/autopilot", url), { method: "POST", headers: { authorization: `Bearer ${process.env.AUTOPILOT_SECRET}` } });
+  const tickBody = await tick.json();
+  if (tick.status !== 200 || !tickBody.runner?.running) throw new Error(`autopilot tick: ${tick.status} ${JSON.stringify(tickBody).slice(0, 200)}`);
+  step(`  ✓ runner on every ${tickBody.runner.intervalSec}s, ${tickBody.runner.vaultsKnown} vault(s) known`);
 } catch (e) {
   failed = e.message;
   step(`✗ ${e.message}`);

@@ -24,6 +24,16 @@ tripped, delivers a fresh mark), starts the indexer against the fork, builds the
 | 6 | Activity | This run's cover, deposit, withdrawal and trades are listed |
 | 7 | History | Indexer shows "live"; the run's events are in the event log |
 | 8 | Monitor | The three-chain watch and drain sequence render |
+| 9 | Agent | Create an agent vault through the factory, fund it |
+| 10 | Agent | Autopilot opens a position from the vault with the agent key (session signed in the wallet) |
+| 11 | Agent | A deposit over the daily spend cap is rejected by the vault contract, with the reason shown |
+| 12 | Agent | A premium (Claude) message charges the fee from the vault on-chain |
+| 13 | Agent | Co-pilot proposes cover; the user signs it in the wallet |
+| 14 | Agent | The autopilot monitor tick sees the position; the agent closes it |
+
+The agent steps use a scripted stand-in model (`AGENT_MOCK=1`, set only by `run.sh`) that maps simple commands
+to the real tools, so the route, tools, signed session, vault limits and fees are all exercised without an
+API key. The real models are checked by hand (below).
 
 It prints a ✓ per step, saves screenshots, and fails on any browser console error. Ports 8545, 3001 and
 42070 must be free. Afterwards rebuild normally (`pnpm build`): the E2E build is test-only.
@@ -85,6 +95,14 @@ check RiftReactive's lREACT balance on the Monitor screen.
 - [ ] With the indexer: all three chains show "live" (Base "catching up" on its first run).
 - [ ] Totals include your cover, deposit and trades.
 - [ ] Filtering by your address shows only your events; chain and type filters work; paging works.
+
+**Agent** (needs `GEMINI_API_KEY`, and `ANTHROPIC_API_KEY` for premium, in `.env.local`)
+- [ ] Create a vault with small limits (e.g. 200 tUSD/day) and fund it.
+- [ ] Co-pilot: "What's the market like?" answers with live numbers; "buy 1,000 cover for a day" shows a proposal card you can sign.
+- [ ] Autopilot: "open a 500 long at 2x" executes from the vault (tx link); asking for more than the day's limit comes back rejected with the limit named.
+- [ ] Pause the vault: autopilot is disabled and the agent can't act. Unpause, Revoke, Re-enable all work.
+- [ ] Claude: each message shows "premium fee 1 tUSD from your vault" with its tx; with the fee cap used up, it refuses with the reason.
+- [ ] Withdraw returns tUSD from the vault to your wallet.
 
 **Phone** (real device, or browser dev tools at 375 px)
 - [ ] Repeat a buy and a trade; the nav scrolls sideways; nothing is cut off.

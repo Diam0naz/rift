@@ -11,17 +11,22 @@
     "e2e": "./e2e/run.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.12.0",
+    "@google/genai": "3.6.1",
     "@rainbow-me/rainbowkit": "2.2.11",
     "@tanstack/react-query": "5.106.1",
     "next": "16.4.5",
+    "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "server-only": "0.0.1",
     "viem": "2.57.16",
     "wagmi": "2.19.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.4",
     "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "tailwindcss": "4.3.4",

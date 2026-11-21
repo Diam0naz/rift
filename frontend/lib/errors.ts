@@ -1,8 +1,9 @@
 import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError } from "viem";
 
+import { fmtToken } from "./format";
 import { fmtDuration } from "./risk";
 
-/** Plain-language reasons for RiftMarket's and the token's custom errors. */
+/** Plain-language reasons for RiftMarket's, the token's and the agent vault's custom errors. */
 const reasons: Record<string, (args: readonly unknown[]) => string> = {
   IsTripped: () => "The market has tripped. New cover, positions and deposits are closed; claims and withdrawals still work.",
   NoMark: () => "No mark has reached the market yet, so it can't price new risk.",
@@ -26,7 +27,23 @@ const reasons: Record<string, (args: readonly unknown[]) => string> = {
   ERC20InsufficientBalance: () => "Not enough tUSD in your wallet. Use the faucet to get some.",
   ERC20InsufficientAllowance: () => "The market isn't approved to spend that much tUSD yet.",
   SafeCastOverflowedUintDowncast: () => "That amount is too large.",
+  // RiftAgentVault: the limits the owner set for the agent, enforced on-chain.
+  OverDailySpend: ([wanted, left]) =>
+    `Over the agent's daily spend limit: this needs ${tok(wanted)} tUSD and ${tok(left)} is left today (resets 00:00 UTC).`,
+  OverNotional: ([wanted, max]) => `Over the agent's size limit: ${tok(wanted)} tUSD asked, ${tok(max)} allowed per action.`,
+  OverLeverage: ([size, margin, max]) =>
+    `Over the agent's leverage limit: ${tok(size)} size on ${tok(margin)} margin is above ${String(max)}×.`,
+  OverDailyFee: ([wanted, left]) => `Over the daily agent-fee limit: ${tok(wanted)} tUSD asked, ${tok(left)} left today.`,
+  NotAllowed: ([action]) =>
+    `The vault doesn't allow the agent to ${({ 1: "trade", 2: "buy cover", 4: "underwrite" } as Record<string, string>)[String(action)] ?? "do that"}. Change it in the vault settings.`,
+  IsPaused: () => "The agent vault is paused. Unpause it to let the agent act.",
+  NotOperator: () => "The agent isn't authorized on this vault (revoked or replaced).",
+  NotOwner: () => "Only the vault's owner can do that.",
+  BadLimits: () => "Those limits aren't valid: leverage must be 1-10×.",
+  VaultExists: () => "You already have an agent vault.",
 };
+
+const tok = (v: unknown) => (typeof v === "bigint" ? fmtToken(v, 2) : String(v));
 
 /** A short, human message for any error thrown while simulating or sending a transaction. */
 export function describeError(err: unknown): string {

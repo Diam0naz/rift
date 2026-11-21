@@ -95,6 +95,7 @@ If RiftReactive stops (out of lREACT, or callbacks unfunded), a drain could neve
 | `src/origin/MockToken.sol` | all | Faucet tokens |
 | `src/reactive/RiftReactive.sol` | Lasna | Subscriptions, spread, outflow window, trip rule, callbacks |
 | `src/market/RiftMarket.sol` | Unichain | Underwriting pool, policies, perp, callback receiver |
+| `src/agent/RiftAgentVault.sol` | Unichain | Per-user vault the AI agent trades from, with on-chain limits and capped agent fees; `RiftAgentVaultFactory` creates one per owner |
 
 Callback auth: `RiftMarket` accepts callbacks only from the Reactive callback proxy **and** only when the injected sender is the linked `RiftReactive`.
 
@@ -162,6 +163,7 @@ Current deployment: 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`
 | RiftMarket (Unichain Sepolia) | [`0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0`](https://sepolia.uniscan.xyz/address/0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0) |
 | Market collateral / tUSD (Unichain Sepolia) | [`0x7595790414E2C73ADAF3fcC70d8F07055fDDBeAA`](https://sepolia.uniscan.xyz/address/0x7595790414E2C73ADAF3fcC70d8F07055fDDBeAA) |
 | RiftReactive (Lasna) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://lasna.reactscan.net/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
+| RiftAgentVaultFactory (Unichain Sepolia, 2026-11-21) | [`0x390232484C2873945a1Dc1425370Ef3080495b8B`](https://sepolia.uniscan.xyz/address/0x390232484C2873945a1Dc1425370Ef3080495b8B) |
 
 | Loop | Origin tx | Reactive tx | Callback tx | Latency |
 |---|---|---|---|---|
@@ -213,6 +215,15 @@ node e2e/responsive.mjs http://localhost:3000 /tmp/shots   # layout at 375 / 768
 ```
 
 `pnpm e2e` forks Unichain Sepolia with anvil. On the fork only, it resets the demo and delivers a fresh mark, starts the indexer against the fork, then builds the app with a test-only wallet connector (anvil's unlocked account) and drives every screen in headless Chrome: faucet and add-token, buying cover, a deliberate revert, deposit and withdraw, opening and closing a position, then checks that Activity and History list what it did and Monitor renders. Nothing touches the real testnet, and the test connector only exists in builds made with `NEXT_PUBLIC_E2E=1`. [`frontend/docs/TESTING.md`](frontend/docs/TESTING.md) has both scripts and a per-screen checklist for a manual pass with a real wallet.
+
+**Agent** (`/app/agent`): a chat that reads live state through tools and acts on the market. Gemini (`gemini-3.8-flash`) is the free default; Claude (`claude-opus-5-5`) is the premium model, paid per message in tUSD from the user's vault.
+
+- **Co-pilot:** actions become proposal cards that the user signs in their wallet (approve, then the action, simulated first).
+- **Autopilot:** the server's agent key acts through the user's `RiftAgentVault`. The contract enforces the owner's limits: daily spend, size per action, leverage, which actions are allowed, and a daily cap on agent fees. Funds leave only to RiftMarket, the owner, or the fee recipient. Owners can pause, revoke or withdraw at any time. Spending needs a wallet-signed session, so nobody can point the agent at someone else's vault.
+- **Background autopilot:** runs inside the app server (started from `instrumentation.ts`, every `AUTOPILOT_INTERVAL_SEC`, default 60 s). For each vault it applies the owner's standing rules, set on the Agent screen with a signed session: liquidation guard (default 1.3× maintenance), take-profit, stop-loss, auto-claim, auto-complete withdrawals, auto-hedge (buy cover while the risk band is amber or red), and an optional plain-language goal that the model re-checks every N minutes (≥ 15). Everything goes through the vault, so its on-chain limits still apply. Rules and an action log live in Neon Postgres (`autopilot_rules`, `autopilot_log`). `POST /api/agent/autopilot` (bearer `AUTOPILOT_SECRET`) runs one pass for hosts that need an external cron.
+- **Gemini availability:** if the configured model is overloaded (503/429), the agent retries, then falls back through `GEMINI_FALLBACK_MODELS` (default `gemini-3.7-flash,gemini-3.5-flash`), skipping an overloaded model for a minute.
+- **Server env** (`frontend/.env.local`, never `NEXT_PUBLIC_`): `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` (optional, enables premium), `AGENT_PRIVATE_KEY`, `AGENT_ADDRESS`, `AUTOPILOT_SECRET`; optional `GEMINI_MODEL`, `CLAUDE_MODEL`, `AGENT_PREMIUM_FEE` (default 1 tUSD). See `frontend/.env.example`.
+- **Deploy:** `AGENT_ADDRESS=0x… forge script script/DeployAgent.s.sol:DeployAgent --rpc-url unichain_sepolia --broadcast` deploys the factory wired to the market, the agent key and the fee recipient, and gives the agent key gas.
 
 **Indexer** (`indexer/`): one Node process that follows RiftMarket and the Unichain pool, the Base pool and vault, and RiftReactive on Lasna into Postgres on Neon (or SQLite locally), and serves `/status` and `/events` (filter by chain, contract, event, address). With it, history loads in one request, covers everything since deployment, and links each trip's Lasna reaction. See [`indexer/README.md`](indexer/README.md).
 

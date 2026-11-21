@@ -7,7 +7,9 @@
 #   3. Starts the indexer on the fork (Unichain only, from the fork block) on :42070.
 #   4. Builds the frontend in E2E mode (mock "Test wallet" = anvil's unlocked account #0) and serves :3001.
 #   5. Drives every screen in headless Chrome: faucet, add token, buy cover, a deliberate revert,
-#      deposit/withdraw, open/close perp, then checks Activity, History (via the indexer) and Monitor.
+#      deposit/withdraw, open/close perp, then checks Activity, History (via the indexer) and Monitor,
+#      then the agent: vault creation and funding, autopilot through the vault, an on-chain limit
+#      rejection, the premium fee, a co-pilot proposal signed in the wallet, and the autopilot tick.
 #
 # Ports 8545, 3001 and 42070 must be free (a leftover server there makes the run test a stale build).
 # Needs: foundry (anvil, cast), google-chrome, node 22+, pnpm. Nothing touches the real testnet.
@@ -56,6 +58,14 @@ INDEX_CHAINS=unichain UNICHAIN_SEPOLIA_RPC=$RPC UNICHAIN_FROM_BLOCK=$FORK_BLOCK 
   PORT=42070 DB_PATH="$OUT/indexer.db" node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ../indexer/src/main.ts >"$OUT/indexer.log" 2>&1 &
 INDEXER_PID=$!
 timeout 30 bash -c 'until curl -sf http://localhost:42070/status >/dev/null; do sleep 1; done'
+
+# The agent: a scripted stand-in model (no API key needed) driving the real tools, the app's agent key from
+# .env.local (on the fork only), and a throwaway secret for the autopilot tick.
+export AGENT_MOCK=1 AUTOPILOT_SECRET=e2e-autopilot
+# Background autopilot every 4 s, rules in a throwaway file (never the Neon DB), goals checkable every pass.
+export AUTOPILOT_INTERVAL_SEC=4 AUTOPILOT_DB=file AUTOPILOT_FILE="$OUT/autopilot.json" AUTOPILOT_MIN_GOAL_MINUTES=0
+AGENT_ADDR=$(grep -s '^AGENT_ADDRESS=' .env.local | cut -d= -f2)
+[[ -n "$AGENT_ADDR" ]] && cast rpc anvil_setBalance "$AGENT_ADDR" 0x8AC7230489E80000 --rpc-url "$RPC" >/dev/null
 
 export NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_E2E=1 NEXT_PUBLIC_E2E_ACCOUNT=$TEST_ACCOUNT NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC=$RPC NEXT_PUBLIC_INDEXER_URL=http://localhost:42070
 pnpm build >/dev/null
