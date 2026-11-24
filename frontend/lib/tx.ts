@@ -27,6 +27,8 @@ export type Call<
   abi: abi;
   functionName: fn;
   args?: ContractFunctionArgs<abi, "nonpayable" | "payable", fn>;
+  /** Native token sent with a payable call. */
+  value?: bigint;
 };
 
 type Phase = "simulating" | "signing" | "pending";

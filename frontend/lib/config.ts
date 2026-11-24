@@ -47,6 +47,12 @@ export const addresses = {
     /** RiftAgentVaultFactory on Unichain Sepolia: one limit-enforcing vault per user for the AI agent. */
     factory: "0x390232484C2873945a1Dc1425370Ef3080495b8B",
   },
+  markets: {
+    /** RiftMarketFactory on Unichain Sepolia: anyone lists a spread market on two pools. */
+    factory: "0x040F01Ee2c50B50F303EeCb83A7BC1B393431C3C",
+    /** RiftHub on Lasna: subscribes to each new market's pools and marks it. */
+    hub: "0xE62076E4854319a78Aa44482F913CE1A7041c573",
+  },
 } as const satisfies Record<string, Record<string, Address>>;
 
 /** Block the market was deployed in; event history is read from here. */

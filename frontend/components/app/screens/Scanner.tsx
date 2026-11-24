@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { PRESETS, SCAN_CHAINS, align, preferFlip, readPool, spreadBps, type PoolRead, type PoolSide, type ScanChain } from "@/lib/scanner";
@@ -21,7 +22,7 @@ function parseSide(v: string | null): PoolSide | null {
   return SCAN_CHAINS.some((c) => c.key === chain) && address ? { chain: chain as ScanChain, address } : null;
 }
 
-const usePool = (side: PoolSide) =>
+export const usePool = (side: PoolSide) =>
   useQuery({
     queryKey: ["scan", side.chain, side.address.toLowerCase()],
     queryFn: () => readPool(side),
@@ -99,7 +100,14 @@ export function ScannerScreen() {
             {!preset && <option value="custom">Custom pools</option>}
           </select>
         </Field>
-        <p className="max-w-xl text-xs text-muted lg:pb-3">{preset?.note ?? "Your own two pools. Prices refresh every 10 s."}</p>
+        <div className="flex flex-wrap items-center gap-3 lg:pb-2">
+          <p className="max-w-xl text-xs text-muted">{preset?.note ?? "Your own two pools. Prices refresh every 10 s."}</p>
+          {aligned?.match && preset?.id !== "rift" && (
+            <Link className="btn-ghost btn-sm" href={`/app/markets?a=${a.chain}:${a.address}&b=${b.chain}:${b.address}`}>
+              List as a market →
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-12">
@@ -122,8 +130,9 @@ export function ScannerScreen() {
               prices everything off.
             </li>
             <li>
-              The <b className="text-[var(--bone)]">deployed market watches one pair</b>, the Rift twin pools, fixed in RiftReactive&apos;s subscriptions. Cover and
-              the perp on another pair means deploying another RiftReactive and RiftMarket for it.
+              The <b className="text-[var(--bone)]">main market watches one pair</b>, the Rift twin pools, fixed in RiftReactive&apos;s subscriptions. To trade the
+              gap on another pair, list it on <Link className="underline underline-offset-4" href="/app/markets">Markets</Link>: RiftHub picks up the listing and
+              starts watching both pools. Cover on other pairs comes next.
             </li>
             <li>A trip also needs a vault outflow (≥ 15% in 5 minutes). A wide gap alone never pays; here only the price half is shown.</li>
             <li>Testnet pools barely trade, so their gaps reflect whoever traded last, not a real market. The mechanism is what&apos;s on show.</li>
@@ -134,7 +143,7 @@ export function ScannerScreen() {
   );
 }
 
-function PoolCard({
+export function PoolCard({
   index,
   side,
   onChange,

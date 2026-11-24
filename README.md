@@ -148,6 +148,9 @@ If RiftReactive stops (out of lREACT, or callbacks unfunded), a drain could neve
 | `src/origin/MockToken.sol` | all | Faucet tokens |
 | `src/reactive/RiftReactive.sol` | Lasna | Subscriptions, spread, outflow window, trip rule, callbacks |
 | `src/market/RiftMarket.sol` | Unichain | Underwriting pool, policies, perp, callback receiver |
+| `src/market/RiftMarketFactory.sol` | Unichain | Anyone lists a spread market on two pools: deploys a `RiftSpreadMarket` and emits `MarketCreated` |
+| `src/market/RiftSpreadMarket.sol` | Unichain | Trader-created market: RiftMarket's perp and underwriting pool, no cover, no owner |
+| `src/reactive/RiftHub.sol` | Lasna | One reactive contract for every listed market: subscribes to each new market's pools from inside `react()`, prices Uniswap v2/RiftPool `Sync` and v3 `Swap`, sends each market its mark |
 | `src/agent/RiftAgentVault.sol` | Unichain | Per-user vault the AI agent trades from, with on-chain limits and capped agent fees; `RiftAgentVaultFactory` creates one per owner |
 
 Callback auth: `RiftMarket` accepts callbacks only from the Reactive callback proxy **and** only when the injected sender is the linked `RiftReactive`.
@@ -216,6 +219,9 @@ Current deployment: 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`
 | RiftMarket (Unichain Sepolia) | [`0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0`](https://sepolia.uniscan.xyz/address/0x45c96DC6c9f5C5A8CFe0Ac8B88DCD7F49b16Bcb0) |
 | Market collateral / tUSD (Unichain Sepolia) | [`0x7595790414E2C73ADAF3fcC70d8F07055fDDBeAA`](https://sepolia.uniscan.xyz/address/0x7595790414E2C73ADAF3fcC70d8F07055fDDBeAA) |
 | RiftReactive (Lasna) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://lasna.reactscan.net/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
+| RiftMarketFactory (Unichain Sepolia, 2026-11-24) | [`0x040F01Ee2c50B50F303EeCb83A7BC1B393431C3C`](https://sepolia.uniscan.xyz/address/0x040F01Ee2c50B50F303EeCb83A7BC1B393431C3C) |
+| RiftHub (Lasna, 2026-11-24) | [`0xE62076E4854319a78Aa44482F913CE1A7041c573`](https://lasna.reactscan.net/address/0xE62076E4854319a78Aa44482F913CE1A7041c573) |
+| Market #0: Rift twin pools (Unichain Sepolia) | [`0x94855689064a2184d92329086D245fdAF98ec606`](https://sepolia.uniscan.xyz/address/0x94855689064a2184d92329086D245fdAF98ec606) |
 | RiftAgentVaultFactory (Unichain Sepolia, 2026-11-21) | [`0x390232484C2873945a1Dc1425370Ef3080495b8B`](https://sepolia.uniscan.xyz/address/0x390232484C2873945a1Dc1425370Ef3080495b8B) |
 
 | Loop | Origin tx | Reactive tx | Callback tx | Latency |
@@ -295,7 +301,14 @@ node e2e/responsive.mjs http://localhost:3000 /tmp/shots   # layout at 375 / 768
 - **Server env** (`frontend/.env.local`, never `NEXT_PUBLIC_`): `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` (optional, enables premium), `AGENT_PRIVATE_KEY`, `AGENT_ADDRESS`, `AUTOPILOT_SECRET`; optional `GEMINI_MODEL`, `CLAUDE_MODEL`, `AGENT_PREMIUM_FEE` (default 1 tUSD). See `frontend/.env.example`.
 - **Deploy:** `AGENT_ADDRESS=0x… forge script script/DeployAgent.s.sol:DeployAgent --rpc-url unichain_sepolia --broadcast` deploys the factory wired to the market, the agent key and the fee recipient, and gives the agent key gas.
 
-**Scanner** (`/app/scanner`): read-only. Pick any two pools (Uniswap v3, v2 or a RiftPool) on Base, Unichain or Ethereum Sepolia and watch both prices and the gap between them, measured against Rift's 5% spread condition. Presets cover the Rift twin pools and the real WETH/USDC pools on each testnet; links are shareable (`?a=chain:pool&b=chain:pool`). It only observes: the deployed market watches one pair, and covering another pair means deploying another RiftReactive and RiftMarket for it.
+**Scanner** (`/app/scanner`): read-only. Pick any two pools (Uniswap v3, v2 or a RiftPool) on Base, Unichain or Ethereum Sepolia and watch both prices and the gap between them, measured against Rift's 5% spread condition. Presets cover the Rift twin pools and the real WETH/USDC pools on each testnet; links are shareable (`?a=chain:pool&b=chain:pool`). It only observes; "List as a market" carries the two pools over to Markets.
+
+**Markets** (`/app/markets`): anyone lists a spread perp on any two pools of the same pair. `RiftMarketFactory.createMarket` deploys the market (the lister pays 0.002 ETH of callback gas into it) and emits `MarketCreated`. `RiftHub` on Lasna is subscribed to that event and, inside `react()`, subscribes to both pools, so no per-market deploy on Reactive. Every `Sync` (Uniswap v2, RiftPool) or `Swap` (Uniswap v3, price from `sqrtPriceX96`) on either pool reprices the market; the hub applies the listing's decimals shift and orientation, smooths the spread over time and sends it as the mark, with a Cron1000 heartbeat. The screen works out the listing parameters from the pools themselves and shows each market's mark, both live prices, underwriting and a trade ticket.
+
+- **Trading only for now:** these markets have the perp and underwriting pool, not the cover product or the trip. Cover on listed pairs is next.
+- **Guards:** the mark is capped at ±100%; an optional per-pool liquidity floor ignores thin-pool prices; pool subscriptions are shared and dropped when no active market uses them; a pool that fires more than 240 events an hour is throttled (markets paused) so it can't drain the hub's REACT; at most 32 markets; the same two pools list once.
+- **First mark:** Reactive doesn't replay logs from before a subscription, so a market gets its first price from each pool's next trade after listing.
+- **Deploy:** `script/DeployHub.s.sol` (factory on Unichain, hub on Lasna, link, and a demo listing of the Rift twin pools).
 
 **Indexer** (`indexer/`): one Node process that follows RiftMarket and the Unichain pool, the Base pool and vault, and RiftReactive on Lasna into Postgres on Neon (or SQLite locally), and serves `/status` and `/events` (filter by chain, contract, event, address). With it, history loads in one request, covers everything since deployment, and links each trip's Lasna reaction. See [`indexer/README.md`](indexer/README.md).
 

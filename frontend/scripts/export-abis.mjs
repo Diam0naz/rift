@@ -18,6 +18,9 @@ const contracts = [
   ["MockToken"],
   ["RiftAgentVault"],
   ["RiftAgentVaultFactory", "RiftAgentVault"],
+  ["RiftMarketFactory"],
+  ["RiftSpreadMarket"],
+  ["RiftHub"],
 ];
 for (const [name, file = name] of contracts) {
   const artifact = JSON.parse(readFileSync(join(outDir, `${file}.sol`, `${name}.json`), "utf8"));

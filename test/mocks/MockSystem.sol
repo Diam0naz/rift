@@ -24,11 +24,28 @@ contract MockSystem {
         return 0;
     }
 
-    function subscribe(uint256 c, address a, uint256 t0, uint256 t1, uint256 t2, uint256 t3) external {
-        subs.push(Sub(c, a, t0, t1, t2, t3));
+    /// @notice Live subscriptions by criteria (subscribe +1, unsubscribe -1).
+    mapping(bytes32 key => int256 count) public live;
+    uint256 public unsubsCount;
+    /// @notice Subscriptions to this chain id revert, like an origin Reactive doesn't support.
+    uint256 public refuseChain;
+
+    error UnsupportedChain();
+
+    function setRefuseChain(uint256 c) external {
+        refuseChain = c;
     }
 
-    function unsubscribe(uint256, address, uint256, uint256, uint256, uint256) external {}
+    function subscribe(uint256 c, address a, uint256 t0, uint256 t1, uint256 t2, uint256 t3) external {
+        if (c != 0 && c == refuseChain) revert UnsupportedChain();
+        subs.push(Sub(c, a, t0, t1, t2, t3));
+        live[keccak256(abi.encode(c, a, t0, t1, t2, t3))]++;
+    }
+
+    function unsubscribe(uint256 c, address a, uint256 t0, uint256 t1, uint256 t2, uint256 t3) external {
+        unsubsCount++;
+        live[keccak256(abi.encode(c, a, t0, t1, t2, t3))]--;
+    }
 
     function requestCallbackV_1_0(ISystemContract.CallbackConfiguration_V_1_0 memory config_) external {
         _callbacks.push(config_);
