@@ -336,7 +336,7 @@ forge test -vv
   - the O(1) PnL total matches the sum of per-position equity, within rounding;
   - the payout ratio stays ≤ 100%.
 - **Fork replay** (`test/fork/ReplayTrip.t.sol`): forks Unichain Sepolia just before the recorded trip callback below and replays that exact transaction with `vm.transact`, checking the trip and the 10,000 tUSD payout. Runs when `UNICHAIN_SEPOLIA_RPC` is set, and is skipped otherwise.
-- **Slither** (`slither.config.json`): 0 findings on `src/`. Three detectors are excluded on purpose: `timestamp` (all timing is timestamp-based by design), `incorrect-equality` (only zero checks), and `reentrancy-events` (the only external call before those events is to Reactive's system contract).
+- **Slither** (`slither.config.json`): 0 findings on `src/`. In RiftHub and RiftSpreadMarket, the findings it raised were reviewed and are suppressed inline, each with its reason (mostly calls to Reactive's trusted system contract). Three detectors are excluded on purpose: `timestamp` (all timing is timestamp-based by design), `incorrect-equality` (only zero checks), and `reentrancy-events` (the only external call before those events is to Reactive's system contract).
 - **CI** (`.github/workflows/ci.yml`): formatting, build, all tests and Slither on every push and pull request. Add an `UNICHAIN_SEPOLIA_RPC` repository secret to run the fork test there too.
 
 ## Strengths and scope

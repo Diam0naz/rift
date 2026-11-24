@@ -27,11 +27,16 @@ import {RiftTypes} from "../market/RiftTypes.sol";
 ///  vault's outflow inside the window crosses its threshold: neither a pushed pool nor a big honest withdrawal
 ///  alone can trip it. A trip is re-sent until the market's `Tripped` comes back; then every subscription of
 ///  that market is dropped. Covered markets are never throttled, since a throttle would switch their cover off.
+// Every external call in this contract goes to Reactive's system contract (subscribe, unsubscribe,
+// requestCallbackV_1_0), which is trusted and never calls back in, so state written after those calls
+// can't be reentered.
+// slither-disable-start reentrancy-no-eth,reentrancy-benign
 contract RiftHub is AbstractReactive {
     // ---------------------------------------------------------------- constants
 
     uint256 internal constant SYNC_TOPIC = uint256(keccak256("Sync(uint112,uint112)"));
-    uint256 internal constant SWAP_TOPIC = uint256(keccak256("Swap(address,address,int256,int256,uint160,uint128,int24)"));
+    uint256 internal constant SWAP_TOPIC =
+        uint256(keccak256("Swap(address,address,int256,int256,uint160,uint128,int24)"));
     /// @dev MarketCreated(uint256,address,address,Spec); a test checks it against the factory's event selector.
     uint256 internal constant CREATED_TOPIC = uint256(
         keccak256(
@@ -131,6 +136,8 @@ contract RiftHub is AbstractReactive {
     mapping(bytes32 poolKey => Window) public windows;
 
     mapping(uint256 id => CoverState) internal _covers;
+    // Written through a storage pointer (`q.push` in _pushOutflow), which Slither doesn't follow.
+    // slither-disable-next-line uninitialized-state
     mapping(uint256 id => Outflow[]) internal _outflows;
     mapping(uint256 id => uint256) internal _outHead;
     /// @dev keccak(chainId, asset, vault) -> covered market ids
@@ -169,7 +176,8 @@ contract RiftHub is AbstractReactive {
     constructor(uint256 uniChainId_, address factory_, uint256 cronTopic_, Params memory params_) payable {
         owner = msg.sender;
         uniChainId = uniChainId_;
-        factory = factory_;
+        // slither-disable-next-line missing-zero-check
+        factory = factory_; // set once by the deployer; a wrong address only means no listings arrive
         cronTopic = cronTopic_;
         _setParams(params_);
         SYSTEM.subscribe(uniChainId_, factory_, CREATED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
@@ -377,11 +385,7 @@ contract RiftHub is AbstractReactive {
         c.armed = true;
         _vaultMarkets[_vaultKey(cfg.chainId, cfg.asset, cfg.vault)].push(id);
         _idOf[m.market] = id + 1;
-        _send(
-            m.market,
-            MARK_GAS,
-            abi.encodeWithSignature("armCover(address,uint256)", address(0), balance)
-        );
+        _send(m.market, MARK_GAS, abi.encodeWithSignature("armCover(address,uint256)", address(0), balance));
         emit CoverArmed(id, cfg.chainId, cfg.vault, balance);
     }
 
@@ -632,8 +636,8 @@ contract RiftHub is AbstractReactive {
         w.count++;
         if (w.count <= params.maxEventsPerHour) return false;
         uint256[] storage ids = _poolMarkets[pk_];
-        bool left;
-        bool paused;
+        bool left = false;
+        bool paused = false;
         for (uint256 i; i < ids.length; ++i) {
             Market storage m = _markets[ids[i]];
             if (!m.active) continue;
@@ -673,6 +677,8 @@ contract RiftHub is AbstractReactive {
     }
 
     /// @dev Raw -> human (× 10^decShift) -> inverted if asked. 0 when out of range.
+    // Shift to human units first, then invert: prices are 1e36-scaled, so the division loses nothing that matters.
+    // slither-disable-next-line divide-before-multiply
     function _orient(uint256 raw_, int8 shift_, bool invert_) internal pure returns (uint256 p) {
         p = raw_;
         if (shift_ > 0) {
@@ -716,3 +722,4 @@ contract RiftHub is AbstractReactive {
         return x_ >= 0 ? uint256(x_) : uint256(-x_);
     }
 }
+// slither-disable-end reentrancy-no-eth,reentrancy-benign

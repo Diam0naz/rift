@@ -277,7 +277,9 @@ contract HubTest is Test {
     }
 
     function test_noisyPoolIsThrottled() public {
-        hub.setParams(RiftHub.Params({markEpsilonBps: 10, markHeartbeat: 900, markSmoothingSeconds: 0, maxEventsPerHour: 3}));
+        hub.setParams(
+            RiftHub.Params({markEpsilonBps: 10, markHeartbeat: 900, markSmoothingSeconds: 0, maxEventsPerHour: 3})
+        );
         _createAndRegister(_spec(BASE, poolA, UNI, poolB));
         for (uint256 i; i < 3; ++i) {
             _sync(BASE, poolA, 1_000e18, 2_000e18);
@@ -299,7 +301,9 @@ contract HubTest is Test {
         vm.expectRevert(RiftHub.NotOwner.selector);
         hub.setActive(0, false);
         vm.expectRevert(RiftHub.NotOwner.selector);
-        hub.setParams(RiftHub.Params({markEpsilonBps: 1, markHeartbeat: 1, markSmoothingSeconds: 0, maxEventsPerHour: 1}));
+        hub.setParams(
+            RiftHub.Params({markEpsilonBps: 1, markHeartbeat: 1, markSmoothingSeconds: 0, maxEventsPerHour: 1})
+        );
         vm.stopPrank();
     }
 
@@ -556,7 +560,9 @@ contract HubTest is Test {
     }
 
     function test_coveredMarketIsNotThrottled() public {
-        hub.setParams(RiftHub.Params({markEpsilonBps: 10, markHeartbeat: 900, markSmoothingSeconds: 0, maxEventsPerHour: 3}));
+        hub.setParams(
+            RiftHub.Params({markEpsilonBps: 10, markHeartbeat: 900, markSmoothingSeconds: 0, maxEventsPerHour: 3})
+        );
         _armedMarket();
         for (uint256 i; i < 6; ++i) {
             _sync(BASE, poolA, 1_000e18, 2_000e18);
@@ -778,9 +784,8 @@ contract HubTest is Test {
     }
 
     function _live(uint256 c, address a, uint256 t0) internal view returns (int256) {
-        return MockSystem(payable(SYSTEM)).live(
-            keccak256(abi.encode(c, a, t0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE))
-        );
+        return MockSystem(payable(SYSTEM))
+            .live(keccak256(abi.encode(c, a, t0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE)));
     }
 
     function _callbacks() internal view returns (uint256) {

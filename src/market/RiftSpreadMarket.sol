@@ -198,7 +198,8 @@ contract RiftSpreadMarket is AbstractPayer {
         AbstractPayer(callbackProxy_)
     {
         collateral = collateral_;
-        reactive = reactive_;
+        // slither-disable-next-line missing-zero-check
+        reactive = reactive_; // the factory only creates markets once its hub is set
         factory = msg.sender;
         marketId = marketId_;
         lastFundingAt = block.timestamp;
@@ -258,7 +259,7 @@ contract RiftSpreadMarket is AbstractPayer {
 
         // Pass 1: policies still waiting are voided and refunded. No external calls anywhere in here.
         uint256 n = _activeIds.length;
-        uint256 coveredNotional;
+        uint256 coveredNotional = 0;
         for (uint256 i; i < n; ++i) {
             uint256 id = _activeIds[i];
             Policy storage p = _policies[id];
