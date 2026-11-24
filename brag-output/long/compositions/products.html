@@ -1,0 +1,114 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: #09090b;
+      overflow: hidden;
+    }
+    .g-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1440px;
+      transform-origin: 0 0;
+    }
+    #g-p,
+    #g-u {
+      height: 1100px;
+    }
+    #g-t {
+      height: 1000px;
+    }
+    .g-cam img {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .g-hl {
+      position: absolute;
+      border: 3px solid #ff4433;
+      background: rgba(255, 68, 51, 0.1);
+    }
+    #g-p-hl {
+      left: 628px;
+      top: 498px;
+      width: 758px;
+      height: 108px;
+    }
+    #g-t-hl {
+      left: 978px;
+      top: 372px;
+      width: 392px;
+      height: 52px;
+    }
+    #g-u-hl {
+      left: 846px;
+      top: 300px;
+      width: 548px;
+      height: 140px;
+    }
+    .g-chip {
+      position: absolute;
+      left: 96px;
+      bottom: 80px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #ece7dc;
+      background: #111114;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .g-chip i {
+      width: 12px;
+      height: 12px;
+      background: #3fb67b;
+      display: inline-block;
+    }
+  </style>
+  <div id="root" data-composition-id="products" data-width="1920" data-height="1080">
+    <div id="g-p" class="g-cam" data-layout-allow-overflow>
+      <img src="assets/screens/protect.webp" alt="Protect: live cover quote" />
+      <div id="g-p-hl" class="g-hl"></div>
+    </div>
+    <div id="g-t" class="g-cam" data-layout-allow-overflow>
+      <img src="assets/screens/trade.webp" alt="Trade: the spread perp ticket" />
+      <div id="g-t-hl" class="g-hl"></div>
+    </div>
+    <div id="g-u" class="g-cam" data-layout-allow-overflow>
+      <img src="assets/screens/underwrite.webp" alt="Underwrite: the pool" />
+      <div id="g-u-hl" class="g-hl"></div>
+    </div>
+    <div id="g-chip-p" class="g-chip"><i></i>The live app · Protect</div>
+    <div id="g-chip-t" class="g-chip"><i></i>The live app · Trade</div>
+    <div id="g-chip-u" class="g-chip"><i></i>The live app · Underwrite</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const frame = { x: 0, y: -330, scale: 1.3334 }; // the page title sits just above the frame
+    const tframe = { x: 0, y: -253, scale: 1.3334 }; // Trade is shorter: keep its bottom edge in frame
+    // Protect: "Buyers get cover priced by live risk."
+    tl.fromTo("#g-p", { ...frame, y: -120, opacity: 0, filter: "blur(10px)" }, { ...frame, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "expo.out" }, 0);
+    tl.fromTo("#g-chip-p", { opacity: 0 }, { opacity: 1, duration: 0.18 }, 0.1);
+    tl.fromTo("#g-p-hl", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 0.9);
+    tl.to(["#g-p", "#g-chip-p"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power3.in" }, 2.1);
+    // Trade: "Traders go long or short the spread."
+    tl.fromTo("#g-t", { ...tframe, opacity: 0, filter: "blur(8px)" }, { ...tframe, opacity: 1, filter: "blur(0px)", duration: 0.15, ease: "power4.out" }, 2.25);
+    tl.fromTo("#g-chip-t", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 2.25);
+    tl.fromTo("#g-t-hl", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 2.9);
+    tl.to(["#g-t", "#g-chip-t"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power3.in" }, 4.25);
+    // Underwrite: "Underwriters earn the premiums."
+    tl.fromTo("#g-u", { ...frame, opacity: 0, filter: "blur(8px)" }, { ...frame, opacity: 1, filter: "blur(0px)", duration: 0.15, ease: "power4.out" }, 4.4);
+    tl.fromTo("#g-chip-u", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 4.4);
+    tl.fromTo("#g-u-hl", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 5.1);
+    tl.to(["#g-u", "#g-chip-u"], { opacity: 0, duration: 0.18, ease: "power3.in" }, 6.55);
+    window.__timelines["products"] = tl;
+  </script>
+</template>

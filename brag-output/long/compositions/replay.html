@@ -1,0 +1,190 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(50% 50% at 20% 90%, rgba(255, 68, 51, 0.14), transparent 70%), #09090b;
+      color: #ece7dc;
+      font-family: "Inter", sans-serif;
+    }
+    #p-panel {
+      position: absolute;
+      left: 160px;
+      top: 150px;
+      width: 1600px;
+      height: 780px;
+      background: #111114;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 64px 80px;
+    }
+    .p-tick {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      border-color: #ff4433;
+      border-style: solid;
+    }
+    #p-t1 {
+      left: -2px;
+      top: -2px;
+      border-width: 4px 0 0 4px;
+    }
+    #p-t2 {
+      right: -2px;
+      bottom: -2px;
+      border-width: 0 4px 4px 0;
+    }
+    #p-kicker {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #a8a397;
+    }
+    #p-kicker b {
+      color: #ff4433;
+      font-weight: 400;
+    }
+    #p-row {
+      margin-top: 44px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    #p-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      color: #a8a397;
+      margin-bottom: 12px;
+    }
+    #p-amount {
+      font-family: "JetBrains Mono", monospace;
+      font-weight: 700;
+      font-size: 132px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    #p-clock {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 60px;
+      color: #ece7dc;
+      text-align: right;
+    }
+    #p-clock small {
+      display: block;
+      font-size: 28px;
+      color: #a8a397;
+      letter-spacing: 0.16em;
+      margin-bottom: 8px;
+    }
+    #p-bar {
+      position: relative;
+      margin-top: 44px;
+      width: 1440px;
+      height: 56px;
+      background: rgba(236, 231, 220, 0.08);
+      border: 2px solid rgba(236, 231, 220, 0.28);
+    }
+    #p-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 1436px;
+      background: #ece7dc;
+      transform-origin: 0 50%;
+    }
+    #p-mark {
+      position: absolute;
+      left: 1170px;
+      top: -22px;
+      width: 6px;
+      height: 96px;
+      background: #ff4433;
+    }
+    #p-stamp {
+      position: absolute;
+      left: 1046px;
+      top: 74px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #09090b;
+      background: #ff4433;
+      padding: 8px 18px;
+      white-space: nowrap;
+    }
+    #p-big {
+      margin-top: 64px;
+      font-size: 80px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+    #p-big em {
+      font-style: normal;
+      color: #ff4433;
+    }
+    #p-after {
+      margin-top: 18px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      color: #a8a397;
+    }
+  </style>
+  <div id="root" data-composition-id="replay" data-width="1920" data-height="1080">
+    <div id="p-panel">
+      <div id="p-t1" class="p-tick"></div>
+      <div id="p-t2" class="p-tick"></div>
+      <div id="p-kicker"><b>Replay /</b> the Nomad exploit · rebuilt from chain data</div>
+      <div id="p-row">
+        <div>
+          <div id="p-label">Nomad USDC escrow · Ethereum</div>
+          <div id="p-amount">$87.5M</div>
+        </div>
+        <div id="p-clock"><small>UTC · 1 AUG 2022</small><span id="p-time">22:38:23</span></div>
+      </div>
+      <div id="p-bar">
+        <div id="p-fill"></div>
+        <div id="p-mark"></div>
+        <div id="p-stamp">RIFT TRIPS · 22:46:36</div>
+      </div>
+      <div id="p-big"><em>$71.2M</em> still in the escrow</div>
+      <div id="p-after">Drained to zero by 23:52.</div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#p-panel", { opacity: 0, y: 30, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.35, ease: "expo.out" }, 0);
+    // The drain runs: escrow and clock move together (22:38:23 → 22:46:36, $87.46M → $71.24M).
+    const s = { k: 0 };
+    const pad = (n) => String(n).padStart(2, "0");
+    const t0 = 22 * 3600 + 38 * 60 + 23,
+      t1 = 22 * 3600 + 46 * 60 + 36;
+    tl.fromTo(
+      s,
+      { k: 0 },
+      {
+        k: 1,
+        duration: 2.0,
+        ease: "power1.in",
+        onUpdate: () => {
+          const amt = 87.46 - (87.46 - 71.24) * s.k;
+          document.querySelector("#p-amount").textContent = "$" + amt.toFixed(1) + "M";
+          const t = Math.round(t0 + (t1 - t0) * s.k);
+          document.querySelector("#p-time").textContent = pad(Math.floor(t / 3600)) + ":" + pad(Math.floor((t % 3600) / 60)) + ":" + pad(t % 60);
+        },
+      },
+      0.7,
+    );
+    tl.fromTo("#p-fill", { scaleX: 1 }, { scaleX: 0.8146, duration: 2.0, ease: "power1.in" }, 0.7);
+    // Freeze: Rift trips (on "trips", 15.25s).
+    tl.fromTo("#p-mark", { opacity: 0, scaleY: 0.2 }, { opacity: 1, scaleY: 1, duration: 0.18, ease: "expo.out" }, 2.9); // "trips at twenty-two forty-six"
+    tl.fromTo("#p-stamp", { opacity: 0, scale: 1.25, filter: "blur(6px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.22, ease: "expo.out" }, 2.92);
+    tl.to("#p-time", { color: "#ff4433", duration: 0.15 }, 2.9);
+    // The number lands as the narrator says it, then holds.
+    tl.fromTo("#p-big", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 4.6); // "seventy-one million dollars"
+    tl.fromTo("#p-after", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power2.out" }, 5.4);
+    window.__timelines["replay"] = tl;
+  </script>
+</template>

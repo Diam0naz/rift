@@ -1,0 +1,84 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"color-ground","type":"color","label":"Background","default":"#09090b"},
+    {"id":"color-ink","type":"color","label":"Text","default":"#ece7dc"},
+    {"id":"color-accent","type":"color","label":"Accent","default":"#ff4433"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* Rift's own tokens (frontend/app/landing.css). */
+      :root {
+        --color-ground: #09090b;
+        --color-ink: #ece7dc;
+        --color-accent: #ff4433;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--color-ground);
+      }
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+      #bg {
+        position: absolute;
+        inset: 0;
+        background: var(--color-ground);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="24.9" data-width="1920" data-height="1080">
+      <div id="bg"></div>
+
+      <!-- Scenes, back to back (one lane). Narration is the clock: each scene spans its line. -->
+      <div id="crash" data-composition-id="crash" data-composition-src="compositions/crash.html" data-start="0" data-duration="7" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="reveal" data-composition-id="reveal" data-composition-src="compositions/reveal.html" data-start="7" data-duration="2.3" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="settle" data-composition-id="settle" data-composition-src="compositions/settle.html" data-start="9.3" data-duration="4.45" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="replay" data-composition-id="replay" data-composition-src="compositions/replay.html" data-start="13.75" data-duration="4.3" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="use" data-composition-id="use" data-composition-src="compositions/use.html" data-start="18.05" data-duration="4.05" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="endcard" data-composition-id="endcard" data-composition-src="compositions/endcard.html" data-start="22.1" data-duration="2.8" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+
+      <!-- Voice (Kokoro af_heart, 1.08x): one clip per line, its own lane. -->
+      <audio id="vo-1" class="clip" data-start="0.35" data-duration="2.752" data-track-index="2" data-volume="1" src="assets/vo/line1.wav"></audio>
+      <audio id="vo-2" class="clip" data-start="3.3" data-duration="3.52" data-track-index="2" data-volume="1" src="assets/vo/line2.wav"></audio>
+      <audio id="vo-3" class="clip" data-start="7.15" data-duration="2.005" data-track-index="2" data-volume="1" src="assets/vo/line3.wav"></audio>
+      <audio id="vo-4" class="clip" data-start="9.4" data-duration="4.245" data-track-index="2" data-volume="1" src="assets/vo/line4.wav"></audio>
+      <audio id="vo-5" class="clip" data-start="13.85" data-duration="4.053" data-track-index="2" data-volume="1" src="assets/vo/line5.wav"></audio>
+      <audio id="vo-6" class="clip" data-start="18.15" data-duration="3.776" data-track-index="2" data-volume="1" src="assets/vo/line6.wav"></audio>
+      <audio id="vo-7" class="clip" data-start="22.3" data-duration="1.194" data-track-index="2" data-volume="1" src="assets/vo/line7.wav"></audio>
+
+      <!-- Music bed: ducked under the voice the whole way, fading out under the end card. -->
+      <audio id="music" class="clip" data-start="0" data-duration="24.9" data-track-index="3" data-volume="0.14" data-fade-in="0.4" data-fade-out="1.6" src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
+
+      <!-- Effects, one lane: each lands one frame after its picture. -->
+      <audio id="sfx-crash" class="clip" data-start="2.08" data-duration="0.183" data-track-index="4" data-volume="0.7" src="assets/sfx/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-mark" class="clip" data-start="7.12" data-duration="0.301" data-track-index="4" data-volume="0.5" src="assets/sfx/impactBell_heavy_004.ogg"></audio>
+      <audio id="sfx-push" class="clip" data-start="9.66" data-duration="0.6" data-track-index="4" data-volume="0.35" src="assets/sfx/card-slide-1.ogg"></audio>
+      <audio id="sfx-hop1" class="clip" data-start="10.23" data-duration="0.11" data-track-index="5" data-volume="0.5" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-hop2" class="clip" data-start="11.13" data-duration="0.191" data-track-index="4" data-volume="0.5" src="assets/sfx/drop_002.ogg"></audio>
+      <audio id="sfx-hop3" class="clip" data-start="12.03" data-duration="0.11" data-track-index="4" data-volume="0.5" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-trip" class="clip" data-start="15.28" data-duration="0.14" data-track-index="4" data-volume="0.75" src="assets/sfx/impactSoft_medium_003.ogg"></audio>
+      <audio id="sfx-screens" class="clip" data-start="18.08" data-duration="0.6" data-track-index="4" data-volume="0.35" src="assets/sfx/card-slide-1.ogg"></audio>
+      <audio id="sfx-agent" class="clip" data-start="20.4" data-duration="0.191" data-track-index="4" data-volume="0.45" src="assets/sfx/drop_002.ogg"></audio>
+      <audio id="sfx-end" class="clip" data-start="22.18" data-duration="0.301" data-track-index="4" data-volume="0.45" src="assets/sfx/impactBell_heavy_004.ogg"></audio>
+    </div>
+    <script>
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

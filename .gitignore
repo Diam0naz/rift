@@ -6,3 +6,10 @@ broadcast/**/dry-run/
 node_modules/
 .DS_Store
 broadcast/**/*.lock
+
+# brag video build: Python venv, voice model work files, render caches
+brag-output/work/
+brag-output/composition/.hyperframes/
+brag-output/composition/node_modules/
+brag-output/long/.hyperframes/
+brag-output/long/node_modules/

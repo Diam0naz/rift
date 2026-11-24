@@ -1,0 +1,1 @@
+When a bridge is drained, its tokens crash in a minute: Nomad's bridged USDC went from $0.9995 to $0.045 before anyone could sell. Rift is cover that pays in seconds, settled by Reactive Network, and replayed on the Nomad hack it trips with $71.2M still in the escrow.

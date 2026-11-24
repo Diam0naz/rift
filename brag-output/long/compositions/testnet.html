@@ -1,0 +1,110 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: #09090b;
+      overflow: hidden;
+    }
+    #s-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1440px;
+      height: 1100px;
+      transform-origin: 0 0;
+    }
+    #s-shot {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1440px;
+      height: 1100px;
+    }
+    #s-focus {
+      position: absolute;
+      left: 72px;
+      top: 744px;
+      width: 1296px;
+      height: 133px;
+      box-shadow: 0 0 0 3000px rgba(9, 9, 11, 0.62);
+    }
+    .s-hop {
+      position: absolute;
+      top: 799px;
+      height: 62px;
+      border: 3px solid #ff4433;
+      background: rgba(255, 68, 51, 0.12);
+    }
+    #s-hop1 {
+      left: 88px;
+      width: 419px;
+    }
+    #s-hop2 {
+      left: 511px;
+      width: 417px;
+    }
+    #s-hop3 {
+      left: 933px;
+      width: 419px;
+    }
+    #s-three {
+      position: absolute;
+      left: 80px;
+      top: 754px;
+      width: 66px;
+      height: 42px;
+      border: 3px solid #ff4433;
+    }
+    #s-chip {
+      position: absolute;
+      left: 96px;
+      top: 80px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #ece7dc;
+      background: #111114;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #s-chip i {
+      width: 12px;
+      height: 12px;
+      background: #3fb67b;
+      display: inline-block;
+    }
+  </style>
+  <div id="root" data-composition-id="testnet" data-width="1920" data-height="1080">
+    <div id="s-cam" data-layout-allow-overflow>
+      <img id="s-shot" src="assets/screens/history.webp" alt="Rift History screen: the trip end to end" />
+      <div id="s-focus"></div>
+      <div id="s-hop1" class="s-hop"></div>
+      <div id="s-hop2" class="s-hop"></div>
+      <div id="s-hop3" class="s-hop"></div>
+      <div id="s-three"></div>
+    </div>
+    <div id="s-chip"><i></i>The live app · History</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // Arrive from the right (matching the reveal's whip out to the left), framed on the whole screen.
+    tl.fromTo("#s-cam", { x: 300, y: -20, scale: 1.3334, opacity: 0, filter: "blur(14px)" }, { x: 0, y: -20, scale: 1.3334, opacity: 1, filter: "blur(0px)", duration: 0.3, ease: "expo.out" }, 0);
+    tl.fromTo("#s-chip", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, 1.0); // after the push-in, over the dimmed screen
+    // Push in on the drain-to-payout card.
+    tl.to("#s-cam", { x: -84, y: -612, scale: 1.45, duration: 0.7, ease: "power2.inOut" }, 0.36);
+    tl.fromTo("#s-focus", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 0.45);
+    // The three hops light up as the narrator crosses the chains (every other beat, then hold).
+    tl.fromTo("#s-hop1", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 1.4); // "a drain on Base"
+    tl.fromTo("#s-hop2", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 2.1);
+    tl.fromTo("#s-hop3", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 2.8); // "settled on Unichain"
+    tl.fromTo("#s-three", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 3.75); // "about three seconds"
+    // Blur swap out.
+    tl.to(["#s-cam", "#s-chip"], { opacity: 0, filter: "blur(8px)", duration: 0.18, ease: "power3.in" }, 4.68);
+    window.__timelines["testnet"] = tl;
+  </script>
+</template>

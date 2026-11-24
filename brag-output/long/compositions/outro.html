@@ -1,0 +1,78 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Archivo Wide";
+      src: url("assets/fonts/archivo-wide-900.woff2") format("woff2");
+      font-weight: 900;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(55% 60% at 50% 45%, rgba(255, 68, 51, 0.14), transparent 70%), #09090b;
+      color: #ece7dc;
+    }
+    #o-stage {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #o-mark {
+      font-family: "Archivo Wide", "Archivo Black", sans-serif;
+      font-weight: 900;
+      font-size: 220px;
+      letter-spacing: -0.045em;
+      line-height: 0.82;
+      text-transform: uppercase;
+    }
+    #o-mark span,
+    #o-line em {
+      color: #ff4433;
+      font-style: normal;
+    }
+    #o-by {
+      margin-top: 40px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 34px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #a8a397;
+    }
+    #o-line {
+      margin-top: 40px;
+      font-family: "Archivo Wide", "Archivo Black", sans-serif;
+      font-weight: 900;
+      font-size: 84px;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      display: flex;
+      gap: 0.3em;
+    }
+    #o-links {
+      margin-top: 60px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 34px;
+      color: #ece7dc;
+      display: flex;
+      gap: 60px;
+    }
+  </style>
+  <div id="root" data-composition-id="outro" data-width="1920" data-height="1080">
+    <div id="o-stage">
+      <div id="o-mark">Rift<span>/</span></div>
+      <div id="o-by">Settled by Reactive Network</div>
+      <div id="o-line"><span id="o-w1">Mind</span><span id="o-w2">the</span><em id="o-w3">gap.</em></div>
+      <div id="o-links"><span>rift-bice.vercel.app</span><span>github.com/Diam0naz/rift</span></div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#o-mark", { opacity: 0, scale: 1.06, filter: "blur(10px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.3, ease: "expo.out" }, 0.1); // "Rift."
+    tl.fromTo("#o-by", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, 0.75); // "Settled by Reactive Network."
+    ["#o-w1", "#o-w2", "#o-w3"].forEach((w, i) => tl.fromTo(w, { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.13, ease: "power2.out" }, 2.2 + i * 0.12)); // "Mind the gap."
+    tl.fromTo("#o-links", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 2.7);
+    window.__timelines["outro"] = tl;
+  </script>
+</template>

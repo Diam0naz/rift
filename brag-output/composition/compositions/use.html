@@ -1,0 +1,105 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: #09090b;
+      overflow: hidden;
+    }
+    .u-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform-origin: 0 0;
+    }
+    #u-camA {
+      width: 1440px;
+      height: 1250px;
+    }
+    #u-camB {
+      width: 1440px;
+      height: 820px;
+    }
+    .u-cam img {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .u-hl {
+      position: absolute;
+      border: 3px solid #ff4433;
+      background: rgba(255, 68, 51, 0.1);
+    }
+    #u-trade {
+      left: 502px;
+      top: 996px;
+      width: 437px;
+      height: 246px;
+    }
+    #u-under {
+      left: 955px;
+      top: 996px;
+      width: 439px;
+      height: 246px;
+    }
+    #u-prop {
+      left: 88px;
+      top: 528px;
+      width: 746px;
+      height: 128px;
+    }
+    .u-chip {
+      position: absolute;
+      left: 96px;
+      top: 80px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #ece7dc;
+      background: #111114;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .u-chip i {
+      width: 12px;
+      height: 12px;
+      background: #3fb67b;
+      display: inline-block;
+    }
+  </style>
+  <div id="root" data-composition-id="use" data-width="1920" data-height="1080">
+    <div id="u-camA" class="u-cam" data-layout-allow-overflow>
+      <img src="assets/screens/overview.webp" alt="Rift Overview: Protect, Trade, Underwrite" />
+      <div id="u-trade" class="u-hl"></div>
+      <div id="u-under" class="u-hl"></div>
+    </div>
+    <div id="u-camB" class="u-cam" data-layout-allow-overflow>
+      <img src="assets/screens/agent.webp" alt="Rift Agent: Gemini answers with live numbers and proposes cover" />
+      <div id="u-prop" class="u-hl"></div>
+    </div>
+    <div id="u-chipA" class="u-chip"><i></i>The live app · Overview</div>
+    <div id="u-chipB" class="u-chip"><i></i>The live app · Agent</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // A: the three products, sliding up into frame (a card-like arrival).
+    tl.fromTo("#u-camA", { x: 24, y: -700, scale: 1.3, opacity: 0, filter: "blur(10px)" }, { x: 24, y: -853, scale: 1.3, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "expo.out" }, 0);
+    tl.fromTo("#u-chipA", { opacity: 0 }, { opacity: 1, duration: 0.18 }, 0.1);
+    tl.fromTo("#u-trade", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 0.25); // "Trade the gap"
+    tl.fromTo("#u-under", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 1.2); // "underwrite the pool"
+    tl.to(["#u-camA", "#u-chipA"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power3.in" }, 2.2);
+    // B: the agent, answering from live state and proposing a signed action.
+    tl.fromTo("#u-camB", { x: -19, y: -34, scale: 1.36, opacity: 0, filter: "blur(8px)" }, { x: -19, y: -34, scale: 1.36, opacity: 1, filter: "blur(0px)", duration: 0.15, ease: "power4.out" }, 2.35);
+    tl.fromTo("#u-chipB", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 2.35);
+    tl.fromTo("#u-prop", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "power2.out" }, 3.15); // "with limits"
+    // Dip to the end card.
+    tl.to(["#u-camB", "#u-chipB"], { opacity: 0, duration: 0.18, ease: "power3.in" }, 3.85);
+    window.__timelines["use"] = tl;
+  </script>
+</template>

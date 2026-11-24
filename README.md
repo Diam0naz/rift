@@ -11,6 +11,8 @@ Built for the [Reactive Omni Buildathon](https://dorahacks.io/hackathon/reactive
 
 **Live app:** [rift-bice.vercel.app](https://rift-bice.vercel.app) (testnet).
 
+**Videos:** [69 s pitch](brag-output/rift-pitch.mp4) (the Nomad story, how a trip works, the testnet run and the replay) · [25 s teaser](brag-output/brag.mp4).
+
 **The use case it's built for: bridge-failure cover.** When a bridge is drained, the tokens it minted on other chains lose their backing and crash below the originals, and holders can't sell their way out. Rift watches the bridge's escrow and the bridged token's price, and when both break it fixes every covered payout in one transaction, seconds later, from a pool funded in advance. Replayed on the 2022 Nomad exploit, Rift trips while $71.2M of the $87.5M USDC escrow is still there ([replay](#replay-the-nomad-bridge-exploit-2022)).
 
 ![Rift landing page: "Trade the gap.", with the recorded trip's mark falling from +4.03% to −74.36%](docs/images/landing.webp)
@@ -292,6 +294,8 @@ node e2e/responsive.mjs http://localhost:3000 /tmp/shots   # layout at 375 / 768
 - **On Vercel with a paid plan:** serverless functions don't keep the background timer, so schedule the tick instead: set `CRON_SECRET` and add a cron for `/api/agent/autopilot` in `vercel.json` (Vercel Cron sends `GET` with `Authorization: Bearer $CRON_SECRET`; Hobby plans allow one run per day, Pro allows every minute). Set the same server env vars in the Vercel project.
 - **Server env** (`frontend/.env.local`, never `NEXT_PUBLIC_`): `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` (optional, enables premium), `AGENT_PRIVATE_KEY`, `AGENT_ADDRESS`, `AUTOPILOT_SECRET`; optional `GEMINI_MODEL`, `CLAUDE_MODEL`, `AGENT_PREMIUM_FEE` (default 1 tUSD). See `frontend/.env.example`.
 - **Deploy:** `AGENT_ADDRESS=0x… forge script script/DeployAgent.s.sol:DeployAgent --rpc-url unichain_sepolia --broadcast` deploys the factory wired to the market, the agent key and the fee recipient, and gives the agent key gas.
+
+**Scanner** (`/app/scanner`): read-only. Pick any two pools (Uniswap v3, v2 or a RiftPool) on Base, Unichain or Ethereum Sepolia and watch both prices and the gap between them, measured against Rift's 5% spread condition. Presets cover the Rift twin pools and the real WETH/USDC pools on each testnet; links are shareable (`?a=chain:pool&b=chain:pool`). It only observes: the deployed market watches one pair, and covering another pair means deploying another RiftReactive and RiftMarket for it.
 
 **Indexer** (`indexer/`): one Node process that follows RiftMarket and the Unichain pool, the Base pool and vault, and RiftReactive on Lasna into Postgres on Neon (or SQLite locally), and serves `/status` and `/events` (filter by chain, contract, event, address). With it, history loads in one request, covers everything since deployment, and links each trip's Lasna reaction. See [`indexer/README.md`](indexer/README.md).
 

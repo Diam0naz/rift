@@ -10,7 +10,7 @@ if (!base || !outDir) {
   console.error("usage: node e2e/responsive.mjs <baseUrl> <outDir> [path ...]");
   process.exit(2);
 }
-const PATHS = only.length ? only : ["/", "/app", "/app/protect", "/app/trade", "/app/underwrite", "/app/monitor", "/app/activity", "/app/history", "/app/agent"];
+const PATHS = only.length ? only : ["/", "/app", "/app/protect", "/app/trade", "/app/underwrite", "/app/monitor", "/app/activity", "/app/history", "/app/agent", "/app/scanner"];
 const WIDTHS = [
   { name: "phone", width: 375, height: 812, mobile: true },
   { name: "tablet", width: 768, height: 1024, mobile: true },
