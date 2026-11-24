@@ -221,7 +221,8 @@ Current deployment: 2026-11-20 from `0xD04927546678d4255bA0D4c6C2E4D7289baa4B5D`
 | RiftReactive (Lasna) | [`0xAD0983eBF145C8f8184bf219E795aC63fEE58B78`](https://lasna.reactscan.net/address/0xAD0983eBF145C8f8184bf219E795aC63fEE58B78) |
 | RiftMarketFactory (Unichain Sepolia, 2026-11-24, with cover) | [`0x5366d86d51787a157E25739CCdfcf41CBD35381b`](https://sepolia.uniscan.xyz/address/0x5366d86d51787a157E25739CCdfcf41CBD35381b) |
 | RiftHub (Lasna, 2026-11-24, with cover) | [`0xe95abe092d49cBD81FAC9F5BDeD954806a14BF09`](https://lasna.reactscan.net/address/0xe95abe092d49cBD81FAC9F5BDeD954806a14BF09) |
-| Market #0: Rift twin pools, cover on the Base MockVault (Unichain Sepolia) | [`0xaa0Ae0b200aB3Ef3AfB4cA07aEb263e4C52b6d05`](https://sepolia.uniscan.xyz/address/0xaa0Ae0b200aB3Ef3AfB4cA07aEb263e4C52b6d05) |
+| Market #0: Rift twin pools, cover on the Base MockVault (tripped live 2026-11-24, frozen) | [`0xaa0Ae0b200aB3Ef3AfB4cA07aEb263e4C52b6d05`](https://sepolia.uniscan.xyz/address/0xaa0Ae0b200aB3Ef3AfB4cA07aEb263e4C52b6d05) |
+| Market #1: the same pair listed again with cover (Unichain Sepolia) | [`0x81Af29C5DE30cfF213d5653682E22ff2739EE21b`](https://sepolia.uniscan.xyz/address/0x81Af29C5DE30cfF213d5653682E22ff2739EE21b) |
 | RiftAgentVaultFactory (Unichain Sepolia, 2026-11-21) | [`0x390232484C2873945a1Dc1425370Ef3080495b8B`](https://sepolia.uniscan.xyz/address/0x390232484C2873945a1Dc1425370Ef3080495b8B) |
 
 | Loop | Origin tx | Reactive tx | Callback tx | Latency |
