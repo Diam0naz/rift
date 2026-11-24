@@ -13,7 +13,10 @@ import {RiftHub} from "../src/reactive/RiftHub.sol";
 //   1. FACTORY:  forge script script/DeployHub.s.sol:DeployFactory --rpc-url unichain_sepolia --broadcast
 //   2. HUB:      FACTORY=0x… forge script script/DeployHub.s.sol:DeployHub --rpc-url lasna --broadcast
 //   3. LINK:     FACTORY=0x… HUB=0x… forge script script/DeployHub.s.sol:LinkHub --rpc-url unichain_sepolia --broadcast
-// Then anyone can call createMarket (the app's Markets screen does it). DemoMarket lists the Rift twin pools.
+// Then anyone can call createMarket (the app's Markets screen does it). DemoMarket lists the Rift twin pools
+// with cover proposed on the Base MockVault; ApproveCover approves it (pass the vault's current balance):
+//   VAULT_BALANCE=$(cast call <asset> "balanceOf(address)(uint256)" <vault> --rpc-url base_sepolia) \
+//   FACTORY=0x… MARKET_ID=0 forge script script/DeployHub.s.sol:ApproveCover --rpc-url unichain_sepolia --broadcast
 
 uint256 constant BASE_SEPOLIA = 84532;
 uint256 constant UNICHAIN_SEPOLIA = 1301;
@@ -69,7 +72,8 @@ contract LinkHub is Script {
     }
 }
 
-/// Lists the Rift twin pools (RiftPool on Base vs RiftPool on Unichain) as the first trader-created market.
+/// Lists the Rift twin pools (RiftPool on Base vs RiftPool on Unichain) as a trader-created market, proposing
+/// cover on the Base MockVault with RiftReactive's trip rule (5% spread held 2s, 15% outflow in 5 minutes).
 contract DemoMarket is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -90,11 +94,33 @@ contract DemoMarket is Script {
             decShift: 0,
             minLiquidity: 0
         });
+        RiftTypes.Cover memory c;
+        if (vm.envOr("COVER", true)) {
+            c = RiftTypes.Cover({
+                chainId: uint64(BASE_SEPOLIA),
+                vault: vm.envOr("VAULT", address(0xCC83d90035bea5b69d3358479F046781146353e3)),
+                asset: vm.envOr("VAULT_ASSET", address(0x540bd620182C67b3A83375259EA11a1037DC7F58)),
+                tripSpreadBps: uint16(vm.envOr("TRIP_SPREAD_BPS", uint256(500))),
+                tripOutflowBps: uint16(vm.envOr("TRIP_OUTFLOW_BPS", uint256(1500))),
+                sustainSeconds: uint32(vm.envOr("SUSTAIN_SECONDS", uint256(2))),
+                windowSeconds: uint32(vm.envOr("WINDOW_SECONDS", uint256(300)))
+            });
+        }
         RiftMarketFactory f = RiftMarketFactory(vm.envAddress("FACTORY"));
         vm.startBroadcast(pk);
-        (uint256 id, address market) = f.createMarket{value: f.minCallbackFunding()}(s);
+        (uint256 id, address market) = f.createMarket{value: f.minCallbackFunding()}(s, c);
         vm.stopBroadcast();
         console2.log("MARKET ID =", id);
         console2.log("MARKET    =", market);
+    }
+}
+
+/// Owner approval of a proposed cover. The hub then watches the vault and arms the market.
+contract ApproveCover is Script {
+    function run() external {
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(pk);
+        RiftMarketFactory(vm.envAddress("FACTORY")).approveCover(vm.envUint("MARKET_ID"), vm.envUint("VAULT_BALANCE"));
+        vm.stopBroadcast();
     }
 }

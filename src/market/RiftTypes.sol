@@ -27,9 +27,25 @@ library RiftTypes {
         PoolRef a;
         PoolRef b;
     }
+
+    /// @notice Drain cover on a listed market: which vault it protects and when it pays.
+    /// @dev The hub watches ERC-20 `Transfer` of `asset` out of and into `vault`. It trips the market when the
+    ///      spread has stayed at or beyond `tripSpreadBps` for `sustainSeconds` AND the vault's outflow inside
+    ///      `windowSeconds` is at least `tripOutflowBps` of its balance. chainId 0 = no cover.
+    struct Cover {
+        uint64 chainId;
+        address vault;
+        address asset;
+        uint16 tripSpreadBps;
+        uint16 tripOutflowBps;
+        uint32 sustainSeconds;
+        uint32 windowSeconds;
+    }
 }
 
-/// @notice The event the hub subscribes to. Kept in an interface so both sides share one topic0.
+/// @notice The events the hub subscribes to. Kept in an interface so both sides share one topic0.
 interface IRiftMarketFactoryEvents {
     event MarketCreated(uint256 indexed id, address indexed market, address indexed creator, RiftTypes.Spec spec);
+    /// @param vaultBalance the vault's `asset` balance when cover was approved: the hub's starting point.
+    event CoverApproved(uint256 indexed id, address indexed market, RiftTypes.Cover cover, uint256 vaultBalance);
 }

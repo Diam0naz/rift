@@ -11,8 +11,8 @@ import { addresses, clients, POLL_MS } from "./config";
 import { align, preferFlip, type PoolRead, type PoolSide, type ScanChain } from "./scanner";
 
 /**
- * Trader-created spread markets: RiftMarketFactory on Unichain lists them, RiftHub on Lasna marks them.
- * Trading-only for now: no cover product and no trip on these markets.
+ * Trader-created markets: RiftMarketFactory on Unichain lists them, RiftHub on Lasna marks them and, when
+ * Rift has approved a market's proposed cover, watches its vault and trips it.
  */
 
 export const factory = { address: addresses.markets.factory, abi: riftMarketFactoryAbi } as const;
@@ -37,6 +37,38 @@ export type PoolRef = {
   minLiquidity: bigint;
 };
 export type Spec = { a: PoolRef; b: PoolRef };
+export type Cover = {
+  chainId: bigint;
+  vault: Address;
+  asset: Address;
+  tripSpreadBps: number;
+  tripOutflowBps: number;
+  sustainSeconds: number;
+  windowSeconds: number;
+};
+export const NO_COVER: Cover = {
+  chainId: 0n,
+  vault: zeroAddress,
+  asset: zeroAddress,
+  tripSpreadBps: 0,
+  tripOutflowBps: 0,
+  sustainSeconds: 0,
+  windowSeconds: 0,
+};
+/** RiftMarketFactory.CoverStatus */
+export const COVER_STATUS = ["none", "proposed", "approved", "rejected"] as const;
+export type CoverStatus = (typeof COVER_STATUS)[number];
+
+export type CoverRow = {
+  status: CoverStatus;
+  cfg: Cover;
+  /** The market has received the hub's armCover callback: cover is on sale. */
+  armed: boolean;
+  activeNotional: bigint;
+  policies: number;
+  /** From the hub; undefined when Lasna didn't answer. */
+  hub?: { armed: boolean; tripped: boolean; confirmed: boolean; vaultBalance: bigint; outflowBps: number; breachSince: number; tripsSent: number };
+};
 
 export type MarketRow = {
   id: number;
@@ -50,6 +82,10 @@ export type MarketRow = {
   openLongSize: bigint;
   openShortSize: bigint;
   now: bigint;
+  tripped: boolean;
+  tripMark: bigint;
+  payoutRatioBps: bigint;
+  cover: CoverRow | null;
   /** From the hub on Lasna; undefined when Lasna didn't answer. */
   hub?: { active: boolean; throttled: boolean; hasA: boolean; hasB: boolean; marksSent: number };
 };
@@ -62,7 +98,7 @@ async function readMarkets(): Promise<MarketRow[]> {
   const rows = await Promise.all(
     list.map(async (address, id) => {
       const m = spreadMarket(address);
-      const [spec, creator, markBps, markReceivedAt, poolAssets, totalShares, openLongSize, openShortSize] = await Promise.all([
+      const [spec, creator, markBps, markReceivedAt, poolAssets, totalShares, openLongSize, openShortSize, status, cfg, armed, tripped, tripMark, payoutRatioBps, activeNotional, policies] = await Promise.all([
         c.readContract({ ...factory, functionName: "specOf", args: [BigInt(id)] }),
         c.readContract({ ...factory, functionName: "creatorOf", args: [BigInt(id)] }),
         c.readContract({ ...m, functionName: "markBps" }),
@@ -71,8 +107,36 @@ async function readMarkets(): Promise<MarketRow[]> {
         c.readContract({ ...m, functionName: "totalShares" }),
         c.readContract({ ...m, functionName: "openLongSize" }),
         c.readContract({ ...m, functionName: "openShortSize" }),
+        c.readContract({ ...factory, functionName: "coverStatus", args: [BigInt(id)] }),
+        c.readContract({ ...factory, functionName: "coverOf", args: [BigInt(id)] }),
+        c.readContract({ ...m, functionName: "coverArmed" }),
+        c.readContract({ ...m, functionName: "tripped" }),
+        c.readContract({ ...m, functionName: "tripMark" }),
+        c.readContract({ ...m, functionName: "payoutRatioBps" }),
+        c.readContract({ ...m, functionName: "activeNotional" }),
+        c.readContract({ ...m, functionName: "policiesCount" }),
       ]);
-      return { id, address, creator, spec: spec as Spec, markBps, markReceivedAt, poolAssets, totalShares, openLongSize, openShortSize, now: block.timestamp };
+      const cover: CoverRow | null =
+        status === 0
+          ? null
+          : { status: COVER_STATUS[status] ?? "none", cfg: cfg as Cover, armed, activeNotional, policies: Number(policies) };
+      return {
+        id,
+        address,
+        creator,
+        spec: spec as Spec,
+        markBps,
+        markReceivedAt,
+        poolAssets,
+        totalShares,
+        openLongSize,
+        openShortSize,
+        now: block.timestamp,
+        tripped,
+        tripMark,
+        payoutRatioBps,
+        cover,
+      };
     }),
   );
   // The hub's view (subscribed? prices seen?) is a nice-to-have: Lasna being slow mustn't hide the list.
@@ -84,7 +148,27 @@ async function readMarkets(): Promise<MarketRow[]> {
         .catch(() => undefined),
     ),
   );
-  return rows.map((r, i) => ({ ...r, hub: hubRows[i] }));
+  const coverRows = await Promise.all(
+    rows.map((r) =>
+      r.cover?.status !== "approved"
+        ? undefined
+        : Promise.all([
+            clients.lasna.readContract({ ...hub, functionName: "coverOf", args: [BigInt(r.id)] }),
+            clients.lasna.readContract({ ...hub, functionName: "outflowBps", args: [BigInt(r.id)] }),
+          ])
+            .then(([h, out]) => ({
+              armed: h.armed,
+              tripped: h.tripped,
+              confirmed: h.confirmed,
+              vaultBalance: h.vaultBalance,
+              outflowBps: Number(out),
+              breachSince: Number(h.breachSince),
+              tripsSent: Number(h.tripsSent),
+            }))
+            .catch(() => undefined),
+    ),
+  );
+  return rows.map((r, i) => ({ ...r, hub: hubRows[i], cover: r.cover && { ...r.cover, hub: coverRows[i] } }));
 }
 
 export const useMarkets = () =>
@@ -104,7 +188,15 @@ export async function readMarketAccount(market: Address, user: Address) {
   const [lockedShares, unlockAt] = request;
   const [open, isLong, size, margin, entryMark] = position;
   const [eq, pnl, funding] = equity;
+  // Policies are few (at most 32 live per market), so scan them all for this buyer's.
+  const n = Number(await c.readContract({ ...m, functionName: "policiesCount" }));
+  const all = await Promise.all(Array.from({ length: n }, (_, i) => c.readContract({ ...m, functionName: "policy", args: [BigInt(i)] })));
+  const policies = all
+    .map((p, id) => ({ id, ...p }))
+    .filter((p) => p.buyer.toLowerCase() === user.toLowerCase())
+    .reverse();
   return {
+    policies,
     usd,
     allowance,
     shares,
@@ -141,5 +233,14 @@ export function specFrom(a: PoolSide, pa: PoolRead, b: PoolSide, pb: PoolRead, f
   });
   return { a: ref(a, pa, al.qa.flipped), b: ref(b, pb, al.qb.flipped) };
 }
+
+/** The factory's owner approves proposed cover; the app shows them an Approve button. */
+export const useFactoryOwner = () =>
+  useQuery({
+    queryKey: ["factory-owner"],
+    queryFn: () => clients.unichain.readContract({ ...factory, functionName: "owner" }),
+    enabled: MARKETS_LIVE,
+    staleTime: Infinity,
+  });
 
 export const KIND_LABEL = (k: number) => (k === KIND_V3 ? "Uniswap v3 · Swap" : "v2 / RiftPool · Sync");

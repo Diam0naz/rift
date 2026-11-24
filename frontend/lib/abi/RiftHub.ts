@@ -80,6 +80,19 @@ export const riftHubAbi = [
   },
   {
     "type": "function",
+    "name": "TRIP_RETRY_SECONDS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "_SERVICE_PROVIDER",
     "inputs": [],
     "outputs": [
@@ -97,6 +110,147 @@ export const riftHubAbi = [
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "coverOf",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct RiftHub.CoverState",
+        "components": [
+          {
+            "name": "cfg",
+            "type": "tuple",
+            "internalType": "struct RiftTypes.Cover",
+            "components": [
+              {
+                "name": "chainId",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "vault",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "asset",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "tripSpreadBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "tripOutflowBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "sustainSeconds",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "windowSeconds",
+                "type": "uint32",
+                "internalType": "uint32"
+              }
+            ]
+          },
+          {
+            "name": "armed",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "tripped",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "confirmed",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "breachSince",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "lastTripSentAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "tripsSent",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "vaultBalance",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "windowOutflow",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tripSpread",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "tripOutflowBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tripObservedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tripOriginChainId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tripOriginTxHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "coverTopic",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -316,6 +470,25 @@ export const riftHubAbi = [
     "type": "function",
     "name": "marketsCount",
     "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "outflowBps",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "outputs": [
       {
         "name": "",
@@ -642,6 +815,38 @@ export const riftHubAbi = [
   },
   {
     "type": "event",
+    "name": "BreachCleared",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BreachStarted",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "spreadBps",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "int256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Callback",
     "inputs": [
       {
@@ -667,6 +872,50 @@ export const riftHubAbi = [
         "type": "bytes",
         "indexed": false,
         "internalType": "bytes"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CoverArmed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "chainId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "vault",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "vaultBalance",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CoverFailed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -905,6 +1154,99 @@ export const riftHubAbi = [
       },
       {
         "name": "originBlock",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TripConfirmed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "marketTxHash",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TripSent",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "spreadBps",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "int256"
+      },
+      {
+        "name": "outflowBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "observedAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "attempt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "VaultFlow",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "outflow",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "vaultBalance",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "windowOutflow",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

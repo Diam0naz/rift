@@ -36,12 +36,21 @@ contract HubTest is Test {
     address internal poolA = makeAddr("poolA"); // Base
     address internal poolB = makeAddr("poolB"); // Unichain
     address internal poolC = makeAddr("poolC"); // Ethereum
+    address internal vault = makeAddr("vault"); // Base
+    address internal asset = makeAddr("vaultAsset");
+    address internal buyer = makeAddr("buyer");
+    address internal late = makeAddr("lateBuyer");
+    uint256 internal constant VAULT_BAL = 1_000e18;
+    uint256 internal constant TRANSFER = uint256(keccak256("Transfer(address,address,uint256)"));
+    uint256 internal constant TRIPPED =
+        uint256(keccak256("Tripped(int256,uint256,uint256,uint256,uint256,uint256,uint256)"));
 
     MockToken internal usd;
     RiftMarketFactory internal factory;
     RiftHub internal hub;
 
     uint256 internal delivered;
+    RiftTypes.Cover internal none; // chainId 0: no cover
 
     function setUp() public {
         vm.warp(1_800_000_000);
@@ -71,6 +80,7 @@ contract HubTest is Test {
 
     function test_constructorSubscribesToFactoryAndCron() public view {
         assertEq(_live(UNI, address(factory), hub.createdTopic()), 1);
+        assertEq(_live(UNI, address(factory), hub.coverTopic()), 1, "cover approvals");
         assertEq(_live(0, 0x0000000000000000000000000000000000fffFfF, CRON), 1);
     }
 
@@ -89,31 +99,31 @@ contract HubTest is Test {
         RiftTypes.Spec memory s = _spec(BASE, poolA, UNI, poolB);
         vm.startPrank(creator);
         vm.expectRevert(abi.encodeWithSelector(RiftMarketFactory.Underfunded.selector, 0.002 ether));
-        factory.createMarket{value: 0.001 ether}(s);
+        factory.createMarket{value: 0.001 ether}(s, none);
 
         RiftTypes.Spec memory bad = _spec(42161, poolA, UNI, poolB);
         vm.expectRevert(abi.encodeWithSelector(RiftMarketFactory.ChainNotAllowed.selector, 42161));
-        factory.createMarket{value: 0.002 ether}(bad);
+        factory.createMarket{value: 0.002 ether}(bad, none);
 
         bad = _spec(BASE, poolA, BASE, poolA);
         vm.expectRevert(RiftMarketFactory.SamePool.selector);
-        factory.createMarket{value: 0.002 ether}(bad);
+        factory.createMarket{value: 0.002 ether}(bad, none);
 
         bad = _spec(BASE, poolA, UNI, poolB);
         bad.a.kind = 2;
         vm.expectRevert(RiftMarketFactory.BadPool.selector);
-        factory.createMarket{value: 0.002 ether}(bad);
+        factory.createMarket{value: 0.002 ether}(bad, none);
 
-        factory.createMarket{value: 0.002 ether}(s);
+        factory.createMarket{value: 0.002 ether}(s, none);
         vm.expectRevert(RiftMarketFactory.AlreadyListed.selector);
-        factory.createMarket{value: 0.002 ether}(s);
+        factory.createMarket{value: 0.002 ether}(s, none);
         vm.stopPrank();
     }
 
     function test_createNeedsHub() public {
         RiftMarketFactory f = new RiftMarketFactory(IPayable(payable(proxy)), IERC20(address(usd)), new uint256[](0));
         vm.expectRevert(RiftMarketFactory.HubNotSet.selector);
-        f.createMarket{value: 0.002 ether}(_spec(BASE, poolA, UNI, poolB));
+        f.createMarket{value: 0.002 ether}(_spec(BASE, poolA, UNI, poolB), none);
         vm.expectRevert(RiftMarketFactory.NotOwner.selector);
         vm.prank(creator);
         f.setHub(address(hub));
@@ -122,11 +132,11 @@ contract HubTest is Test {
     function test_marketCap() public {
         for (uint256 i; i < factory.MAX_MARKETS(); ++i) {
             vm.prank(creator);
-            factory.createMarket{value: 0.002 ether}(_spec(BASE, address(uint160(1000 + i)), UNI, poolB));
+            factory.createMarket{value: 0.002 ether}(_spec(BASE, address(uint160(1000 + i)), UNI, poolB), none);
         }
         vm.prank(creator);
         vm.expectRevert(RiftMarketFactory.TooManyMarkets.selector);
-        factory.createMarket{value: 0.002 ether}(_spec(BASE, poolC, UNI, poolB));
+        factory.createMarket{value: 0.002 ether}(_spec(BASE, poolC, UNI, poolB), none);
     }
 
     // ---------------------------------------------------------------- registration
@@ -345,7 +355,341 @@ contract HubTest is Test {
         m.openPosition(true, 1_000e18, 500e18);
     }
 
+    // ---------------------------------------------------------------- cover
+
+    function test_coverTopicMatchesFactoryEvent() public view {
+        assertEq(hub.coverTopic(), uint256(IRiftMarketFactoryEvents.CoverApproved.selector));
+    }
+
+    function test_coverProposalChecksAndApproval() public {
+        RiftTypes.Spec memory s = _spec(BASE, poolA, UNI, poolB);
+        RiftTypes.Cover memory c = _cover();
+        vm.startPrank(creator);
+        c.tripSpreadBps = 50;
+        vm.expectRevert(RiftMarketFactory.BadCover.selector);
+        factory.createMarket{value: 0.002 ether}(s, c);
+        c = _cover();
+        c.sustainSeconds = 31 minutes;
+        vm.expectRevert(RiftMarketFactory.BadCover.selector);
+        factory.createMarket{value: 0.002 ether}(s, c);
+        c = _cover();
+        c.vault = address(0);
+        vm.expectRevert(RiftMarketFactory.BadCover.selector);
+        factory.createMarket{value: 0.002 ether}(s, c);
+        c = _cover();
+        c.chainId = 42161;
+        vm.expectRevert(abi.encodeWithSelector(RiftMarketFactory.ChainNotAllowed.selector, 42161));
+        factory.createMarket{value: 0.002 ether}(s, c);
+
+        factory.createMarket{value: 0.002 ether}(s, _cover());
+        assertEq(uint8(factory.coverStatus(0)), uint8(RiftMarketFactory.CoverStatus.Proposed));
+        assertEq(factory.coverOf(0).vault, vault);
+
+        vm.expectRevert(RiftMarketFactory.NotOwner.selector);
+        factory.approveCover(0, 1_000e18);
+        vm.stopPrank();
+
+        vm.expectRevert(RiftMarketFactory.NoCoverProposed.selector);
+        factory.approveCover(5, 1_000e18);
+        factory.rejectCover(0);
+        assertEq(uint8(factory.coverStatus(0)), uint8(RiftMarketFactory.CoverStatus.Rejected));
+        vm.expectRevert(RiftMarketFactory.NoCoverProposed.selector);
+        factory.approveCover(0, 1_000e18);
+    }
+
+    function test_approvalArmsCoverThroughTheHub() public {
+        RiftSpreadMarket m = _coveredMarket();
+        assertFalse(m.coverArmed(), "not before the hub confirms");
+
+        IReactive.LogRecord memory approval = _approveLog(0, VAULT_BAL);
+        _react(approval);
+        uint256 v = uint256(uint160(vault));
+        assertEq(_liveT(BASE, asset, TRANSFER, v, REACTIVE_IGNORE), 1, "outflows");
+        assertEq(_liveT(BASE, asset, TRANSFER, REACTIVE_IGNORE, v), 1, "inflows");
+        assertEq(_live(UNI, address(m), TRIPPED), 1, "confirmation");
+        assertTrue(hub.coverOf(0).armed);
+        assertEq(hub.coverOf(0).vaultBalance, VAULT_BAL);
+
+        _deliverAll(m);
+        assertTrue(m.coverArmed());
+
+        // A re-sent approval changes nothing.
+        uint256 n = _callbacks();
+        _react(_approveLog(0, 1));
+        assertEq(_callbacks(), n);
+        assertEq(hub.coverOf(0).vaultBalance, VAULT_BAL);
+    }
+
+    function test_coverApprovalFromAnotherContractIsIgnored() public {
+        _coveredMarket();
+        IReactive.LogRecord memory approval = _approveLog(0, VAULT_BAL);
+        approval.contractAddress = makeAddr("impostor");
+        _react(approval);
+        assertFalse(hub.coverOf(0).armed);
+    }
+
+    function test_refusedVaultSubscriptionLeavesCoverOff() public {
+        MockSystem(payable(SYSTEM)).setRefuseChain(ETH);
+        RiftTypes.Cover memory c = _cover();
+        c.chainId = uint64(ETH);
+        vm.recordLogs();
+        vm.prank(creator);
+        factory.createMarket{value: 0.002 ether}(_spec(BASE, poolA, UNI, poolB), c);
+        _react(_fromRecorded(hub.createdTopic()));
+        assertTrue(hub.registered(0));
+        uint256 n = _callbacks();
+        IReactive.LogRecord memory approval = _approveLog(0, VAULT_BAL);
+        vm.expectEmit(true, false, false, false, address(hub));
+        emit RiftHub.CoverFailed(0);
+        _react(approval);
+        assertFalse(hub.coverOf(0).armed);
+        assertEq(_callbacks(), n, "no armCover");
+    }
+
+    function test_buyProtectionNeedsArmedCover() public {
+        RiftSpreadMarket m = _createAndRegister(_spec(BASE, poolA, UNI, poolB));
+        _prices(2_000e18, 2_000e18);
+        _deliverAll(m);
+        _underwrite(m, 50_000e18);
+        _fund(buyer, m, 1_000e18);
+        vm.prank(buyer);
+        vm.expectRevert(RiftSpreadMarket.CoverNotArmed.selector);
+        m.buyProtection(10_000e18, 1 days);
+    }
+
+    function test_spreadAloneOrOutflowAloneDoesNotTrip() public {
+        RiftSpreadMarket m = _armedMarket();
+        // Spread broken for a long time, no drain.
+        _prices(2_000e18, 2_400e18); // +20%
+        vm.warp(block.timestamp + 60);
+        _cron();
+        assertFalse(hub.coverOf(0).tripped, "spread alone");
+        // Back to normal, then a big honest withdrawal.
+        _prices(2_000e18, 2_000e18);
+        _transfer(vault, makeAddr("whale"), 500e18); // 50%
+        assertFalse(hub.coverOf(0).tripped, "outflow alone");
+        assertEq(hub.outflowBps(0), 5_000);
+        _deliverAll(m);
+        assertFalse(m.tripped());
+    }
+
+    function test_drainWithBrokenSpreadTripsAndPaysCover() public {
+        RiftSpreadMarket m = _armedMarket();
+        _underwrite(m, 50_000e18);
+
+        _fund(buyer, m, 1_000e18);
+        vm.prank(buyer);
+        uint256 id = m.buyProtection(10_000e18, 1 days);
+        uint256 premium = m.policy(id).premium;
+        assertGt(premium, 0);
+        vm.warp(block.timestamp + m.COVER_DELAY() + 1);
+
+        _fund(late, m, 1_000e18);
+        vm.prank(late);
+        uint256 lateId = m.buyProtection(5_000e18, 1 days); // still waiting at the trip
+
+        _prices(2_000e18, 2_400e18); // +20% breach starts
+        vm.warp(block.timestamp + 5); // longer than sustainSeconds
+        _transfer(vault, makeAddr("attacker"), 300e18); // 30% out
+        assertTrue(hub.coverOf(0).tripped);
+        assertEq(hub.coverOf(0).tripOutflowBps, 3_000);
+        _deliverAll(m);
+
+        assertTrue(m.tripped());
+        assertEq(m.tripMark(), 2_000);
+        assertEq(m.policy(id).owed, 10_000e18);
+        assertEq(m.policy(lateId).owed, m.policy(lateId).premium, "waiting policy refunded");
+        m.claim(id);
+        assertEq(usd.balanceOf(buyer), 1_000e18 - premium + 10_000e18);
+
+        // The perp and the pool are frozen for new risk.
+        vm.prank(buyer);
+        vm.expectRevert(RiftSpreadMarket.IsTripped.selector);
+        m.buyProtection(1e18, 1 days);
+        vm.prank(lp);
+        vm.expectRevert(RiftSpreadMarket.IsTripped.selector);
+        m.deposit(1e18);
+    }
+
+    function test_oldOutflowsLeaveTheWindow() public {
+        _armedMarket();
+        _transfer(vault, makeAddr("a"), 200e18);
+        assertEq(hub.outflowBps(0), 2_000);
+        vm.warp(block.timestamp + 301);
+        _prices(2_000e18, 2_400e18);
+        vm.warp(block.timestamp + 5);
+        _cron();
+        assertEq(hub.outflowBps(0), 0, "window expired");
+        assertFalse(hub.coverOf(0).tripped);
+        _transfer(makeAddr("b"), vault, 100e18);
+        assertEq(hub.coverOf(0).vaultBalance, 900e18);
+    }
+
+    function test_tripIsResentUntilConfirmedThenSubscriptionsDrop() public {
+        RiftSpreadMarket m = _armedMarket();
+        _prices(2_000e18, 2_400e18);
+        vm.warp(block.timestamp + 5);
+        _transfer(vault, makeAddr("attacker"), 300e18);
+        assertEq(hub.coverOf(0).tripsSent, 1);
+
+        _cron(); // too soon
+        assertEq(hub.coverOf(0).tripsSent, 1);
+        vm.warp(block.timestamp + hub.TRIP_RETRY_SECONDS());
+        _cron();
+        assertEq(hub.coverOf(0).tripsSent, 2, "re-sent");
+
+        vm.recordLogs();
+        _deliverAll(m); // both trips land; the second is a no-op
+        assertTrue(m.tripped());
+        _react(_trippedLog(m));
+        assertTrue(hub.coverOf(0).confirmed);
+        assertFalse(hub.marketOf(0).active);
+        uint256 v = uint256(uint160(vault));
+        assertEq(_liveT(BASE, asset, TRANSFER, v, REACTIVE_IGNORE), 0);
+        assertEq(_live(UNI, address(m), TRIPPED), 0);
+        assertEq(_live(BASE, poolA, SYNC), 0);
+
+        vm.warp(block.timestamp + 1 hours);
+        uint256 n = _callbacks();
+        _cron();
+        assertEq(_callbacks(), n, "nothing after the trip");
+    }
+
+    function test_coveredMarketIsNotThrottled() public {
+        hub.setParams(RiftHub.Params({markEpsilonBps: 10, markHeartbeat: 900, markSmoothingSeconds: 0, maxEventsPerHour: 3}));
+        _armedMarket();
+        for (uint256 i; i < 6; ++i) {
+            _sync(BASE, poolA, 1_000e18, 2_000e18);
+        }
+        assertTrue(hub.marketOf(0).active);
+        assertEq(_live(BASE, poolA, SYNC), 1);
+    }
+
+    function test_pairCanBeListedAgainAfterItsMarketTrips() public {
+        RiftSpreadMarket m = _armedMarket();
+        bytes32 k = keccak256(abi.encode(uint64(BASE), poolA, uint64(UNI), poolB));
+        assertTrue(factory.listed(k));
+        _prices(2_000e18, 2_400e18);
+        vm.warp(block.timestamp + 5);
+        _transfer(vault, makeAddr("attacker"), 300e18);
+        _deliverAll(m);
+        assertFalse(factory.listed(k));
+        (uint256 id,) = _create(_spec(BASE, poolA, UNI, poolB));
+        assertEq(id, 1);
+    }
+
+    function test_tripSettlesMaxPoliciesWithinCallbackGas() public {
+        RiftSpreadMarket m = _armedMarket();
+        _underwrite(m, 1_000_000e18);
+        for (uint256 i; i < m.MAX_POLICIES(); ++i) {
+            address b = address(uint160(5000 + i));
+            _fund(b, m, 100e18);
+            vm.prank(b);
+            m.buyProtection(1_000e18, 1 days);
+        }
+        vm.warp(block.timestamp + m.COVER_DELAY() + 1);
+        vm.prank(proxy);
+        uint256 g = gasleft();
+        m.trip(address(hub), 2_000, 3_000, block.timestamp, BASE, 0);
+        uint256 used = g - gasleft();
+        assertTrue(m.tripped());
+        assertLt(used, 2_500_000, "fits TRIP_GAS (3M) with room for the proxy");
+        emit log_named_uint("trip gas, 32 policies", used);
+    }
+
+    function test_marketIgnoresTripUntilArmedAndOtherSenders() public {
+        (, RiftSpreadMarket m) = _create(_spec(BASE, poolA, UNI, poolB));
+        vm.prank(proxy);
+        m.trip(address(hub), 2_000, 3_000, block.timestamp, BASE, 0);
+        assertFalse(m.tripped(), "not armed");
+        vm.prank(proxy);
+        vm.expectRevert(abi.encodeWithSelector(RiftSpreadMarket.UnauthorizedReactive.selector, creator));
+        m.armCover(creator, 0);
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    function _cover() internal view returns (RiftTypes.Cover memory) {
+        return RiftTypes.Cover({
+            chainId: uint64(BASE),
+            vault: vault,
+            asset: asset,
+            tripSpreadBps: 500,
+            tripOutflowBps: 1_500,
+            sustainSeconds: 2,
+            windowSeconds: 300
+        });
+    }
+
+    function _coveredMarket() internal returns (RiftSpreadMarket m) {
+        vm.recordLogs();
+        vm.prank(creator);
+        (, address m_) = factory.createMarket{value: 0.002 ether}(_spec(BASE, poolA, UNI, poolB), _cover());
+        m = RiftSpreadMarket(payable(m_));
+        _react(_fromRecorded(hub.createdTopic()));
+    }
+
+    /// @dev Listed, approved, armed, with a first mark.
+    function _armedMarket() internal returns (RiftSpreadMarket m) {
+        m = _coveredMarket();
+        _react(_approveLog(0, VAULT_BAL));
+        _prices(2_000e18, 2_000e18);
+        _deliverAll(m);
+        assertTrue(m.coverArmed());
+    }
+
+    function _approveLog(uint256 id, uint256 bal) internal returns (IReactive.LogRecord memory) {
+        vm.recordLogs();
+        factory.approveCover(id, bal);
+        return _fromRecorded(hub.coverTopic());
+    }
+
+    function _fromRecorded(uint256 t0) internal returns (IReactive.LogRecord memory r) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter == address(factory) && uint256(logs[i].topics[0]) == t0) {
+                r = _log(UNI, address(factory), t0, logs[i].data);
+                r.topic1 = uint256(logs[i].topics[1]);
+                r.topic2 = uint256(logs[i].topics[2]);
+                if (logs[i].topics.length > 3) r.topic3 = uint256(logs[i].topics[3]);
+                return r;
+            }
+        }
+        revert("log not recorded");
+    }
+
+    function _trippedLog(RiftSpreadMarket m) internal returns (IReactive.LogRecord memory r) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter == address(m) && uint256(logs[i].topics[0]) == TRIPPED) {
+                return _log(UNI, address(m), TRIPPED, logs[i].data);
+            }
+        }
+        revert("no Tripped");
+    }
+
+    function _prices(uint112 a1, uint112 b1) internal {
+        _sync(BASE, poolA, 1_000e18, a1);
+        _sync(UNI, poolB, 1_000e18, b1);
+    }
+
+    function _transfer(address from, address to, uint256 amount) internal {
+        IReactive.LogRecord memory r = _log(BASE, asset, TRANSFER, abi.encode(amount));
+        r.topic1 = uint256(uint160(from));
+        r.topic2 = uint256(uint160(to));
+        r.opCode = 3;
+        _react(r);
+    }
+
+    function _underwrite(RiftSpreadMarket m, uint256 amt) internal {
+        _fund(lp, m, amt);
+        vm.prank(lp);
+        m.deposit(amt);
+    }
+
+    function _liveT(uint256 c, address a, uint256 t0, uint256 t1, uint256 t2) internal view returns (int256) {
+        return MockSystem(payable(SYSTEM)).live(keccak256(abi.encode(c, a, t0, t1, t2, REACTIVE_IGNORE)));
+    }
 
     function _spec(uint256 ca, address pa, uint256 cb, address pb) internal pure returns (RiftTypes.Spec memory s) {
         s.a = RiftTypes.PoolRef({chainId: uint64(ca), pool: pa, kind: 0, invert: false, decShift: 0, minLiquidity: 0});
@@ -354,7 +698,7 @@ contract HubTest is Test {
 
     function _create(RiftTypes.Spec memory s) internal returns (uint256 id, RiftSpreadMarket m) {
         vm.prank(creator);
-        (uint256 id_, address m_) = factory.createMarket{value: 0.002 ether}(s);
+        (uint256 id_, address m_) = factory.createMarket{value: 0.002 ether}(s, none);
         return (id_, RiftSpreadMarket(payable(m_)));
     }
 

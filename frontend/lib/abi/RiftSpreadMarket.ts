@@ -32,6 +32,19 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "BASE_BPS_PER_DAY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "BPS",
     "inputs": [],
     "outputs": [
@@ -45,7 +58,33 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "COVER_DELAY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "FUNDING_DENOM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "KINK_WAD",
     "inputs": [],
     "outputs": [
       {
@@ -84,6 +123,19 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_DURATION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_LEVERAGE",
     "inputs": [],
     "outputs": [
@@ -98,6 +150,84 @@ export const riftSpreadMarketAbi = [
   {
     "type": "function",
     "name": "MAX_MARK_AGE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_POLICIES",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_STRESS_MULTIPLIER_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_DURATION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SLOPE1_BPS_PER_DAY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SLOPE2_BPS_PER_DAY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "STRESS_SPREAD_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -136,9 +266,96 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "activeNotional",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "total",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "activePolicyIds",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "armCover",
+    "inputs": [
+      {
+        "name": "sender_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "vaultBalance_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "buyProtection",
+    "inputs": [
+      {
+        "name": "notional_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "duration_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "cancelWithdraw",
     "inputs": [],
     "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claim",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "stateMutability": "nonpayable"
   },
   {
@@ -173,6 +390,32 @@ export const riftSpreadMarketAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "coverArmed",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "coverArmedAt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -361,6 +604,19 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "nextPolicyId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "openLongSize",
     "inputs": [],
     "outputs": [
@@ -420,6 +676,88 @@ export const riftSpreadMarketAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "payoutRatioBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "policiesCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "policy",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct RiftSpreadMarket.Policy",
+        "components": [
+          {
+            "name": "buyer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "activeAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "expiry",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "settled",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "notional",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "premium",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "owed",
+            "type": "uint128",
+            "internalType": "uint128"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -493,6 +831,49 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "premiumRateBpsPerDay",
+    "inputs": [
+      {
+        "name": "u_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "quotePremium",
+    "inputs": [
+      {
+        "name": "notional_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "duration_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "reactive",
     "inputs": [],
     "outputs": [
@@ -551,7 +932,33 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "stressMultiplierBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "totalMargin",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalOwed",
     "inputs": [],
     "outputs": [
       {
@@ -584,6 +991,96 @@ export const riftSpreadMarketAbi = [
         "name": "",
         "type": "int256",
         "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "trip",
+    "inputs": [
+      {
+        "name": "sender_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "markBps_",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "outflowBps_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "observedAt_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "originChainId_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "originTxHash_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "tripMark",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tripOutflowBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tripped",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "trippedAt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -623,6 +1120,19 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "function",
+    "name": "utilizationWad",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "withdrawRequests",
     "inputs": [
       {
@@ -644,6 +1154,44 @@ export const riftSpreadMarketAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "Claimed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CoverArmed",
+    "inputs": [
+      {
+        "name": "vaultBalance",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",
@@ -734,6 +1282,37 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "event",
+    "name": "PolicySettled",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "owed",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "covered",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "PositionClosed",
     "inputs": [
       {
@@ -808,6 +1387,49 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "event",
+    "name": "ProtectionBought",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "notional",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "premium",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "activeAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "expiry",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "StaleMarkIgnored",
     "inputs": [
       {
@@ -824,6 +1446,55 @@ export const riftSpreadMarketAbi = [
       },
       {
         "name": "currentObservedAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Tripped",
+    "inputs": [
+      {
+        "name": "markBps",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "int256"
+      },
+      {
+        "name": "outflowBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "observedAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "receivedAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "originChainId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "originTxHash",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "payoutRatioBps",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -902,6 +1573,16 @@ export const riftSpreadMarketAbi = [
   },
   {
     "type": "error",
+    "name": "BadDuration",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CoverNotArmed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InsufficientFunds",
     "inputs": [
       {
@@ -924,6 +1605,11 @@ export const riftSpreadMarketAbi = [
   {
     "type": "error",
     "name": "InsufficientShares",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "IsTripped",
     "inputs": []
   },
   {
@@ -960,6 +1646,11 @@ export const riftSpreadMarketAbi = [
   {
     "type": "error",
     "name": "NotLiquidatable",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingToClaim",
     "inputs": []
   },
   {
@@ -1009,6 +1700,11 @@ export const riftSpreadMarketAbi = [
         "internalType": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "TooManyPolicies",
+    "inputs": []
   },
   {
     "type": "error",

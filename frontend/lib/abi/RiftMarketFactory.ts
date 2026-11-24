@@ -36,6 +36,58 @@ export const riftMarketFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_SUSTAIN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_TRIP_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "allowedChain",
     "inputs": [
       {
@@ -52,6 +104,24 @@ export const riftMarketFactoryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "approveCover",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "vaultBalance_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -75,6 +145,81 @@ export const riftMarketFactoryAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract IERC20"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "coverOf",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct RiftTypes.Cover",
+        "components": [
+          {
+            "name": "chainId",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "vault",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "asset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "tripSpreadBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "tripOutflowBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sustainSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "windowSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "coverStatus",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum RiftMarketFactory.CoverStatus"
       }
     ],
     "stateMutability": "view"
@@ -161,6 +306,48 @@ export const riftMarketFactoryAbi = [
                 "internalType": "uint128"
               }
             ]
+          }
+        ]
+      },
+      {
+        "name": "cover_",
+        "type": "tuple",
+        "internalType": "struct RiftTypes.Cover",
+        "components": [
+          {
+            "name": "chainId",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "vault",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "asset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "tripSpreadBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "tripOutflowBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sustainSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "windowSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       }
@@ -311,7 +498,7 @@ export const riftMarketFactoryAbi = [
     "name": "listed",
     "inputs": [
       {
-        "name": "key",
+        "name": "key_",
         "type": "bytes32",
         "internalType": "bytes32"
       }
@@ -395,6 +582,19 @@ export const riftMarketFactoryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "rejectCover",
+    "inputs": [
+      {
+        "name": "id_",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -556,6 +756,143 @@ export const riftMarketFactoryAbi = [
   },
   {
     "type": "event",
+    "name": "CoverApproved",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "market",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "cover",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct RiftTypes.Cover",
+        "components": [
+          {
+            "name": "chainId",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "vault",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "asset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "tripSpreadBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "tripOutflowBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sustainSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "windowSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "vaultBalance",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CoverProposed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "cover",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct RiftTypes.Cover",
+        "components": [
+          {
+            "name": "chainId",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "vault",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "asset",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "tripSpreadBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "tripOutflowBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "sustainSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "windowSeconds",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CoverRejected",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "HubSet",
     "inputs": [
       {
@@ -694,6 +1031,11 @@ export const riftMarketFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "BadCover",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "BadPool",
     "inputs": []
   },
@@ -716,6 +1058,11 @@ export const riftMarketFactoryAbi = [
   {
     "type": "error",
     "name": "HubNotSet",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoCoverProposed",
     "inputs": []
   },
   {
