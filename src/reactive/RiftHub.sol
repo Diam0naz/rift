@@ -29,8 +29,8 @@ import {RiftTypes} from "../market/RiftTypes.sol";
 ///  that market is dropped. Covered markets are never throttled, since a throttle would switch their cover off.
 // Every external call in this contract goes to Reactive's system contract (subscribe, unsubscribe,
 // requestCallbackV_1_0), which is trusted and never calls back in, so state written after those calls
-// can't be reentered.
-// slither-disable-start reentrancy-no-eth,reentrancy-benign
+// can't be reentered. Calls in a loop are callback requests to that same contract, bounded by MAX_MARKETS.
+// slither-disable-start reentrancy-no-eth,reentrancy-benign,calls-loop
 contract RiftHub is AbstractReactive {
     // ---------------------------------------------------------------- constants
 
@@ -722,4 +722,4 @@ contract RiftHub is AbstractReactive {
         return x_ >= 0 ? uint256(x_) : uint256(-x_);
     }
 }
-// slither-disable-end reentrancy-no-eth,reentrancy-benign
+// slither-disable-end reentrancy-no-eth,reentrancy-benign,calls-loop
