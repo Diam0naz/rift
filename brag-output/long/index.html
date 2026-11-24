@@ -13,7 +13,7 @@
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="69.0" data-width="1920" data-height="1080">
+    <div id="root" data-composition-id="main" data-start="0" data-duration="80.25" data-width="1920" data-height="1080">
       <div id="bg"></div>
       <!-- Scenes, back to back. Narration (Kokoro af_heart, 1.05x) is the clock. -->
       <div id="crash" data-composition-id="crash" data-composition-src="compositions/crash.html" data-start="0" data-duration="14.0" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
@@ -23,8 +23,9 @@
       <div id="testnet" data-composition-id="testnet" data-composition-src="compositions/testnet.html" data-start="38.55" data-duration="4.9" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
       <div id="replay" data-composition-id="replay" data-composition-src="compositions/replay.html" data-start="43.45" data-duration="7.8" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
       <div id="products" data-composition-id="products" data-composition-src="compositions/products.html" data-start="51.25" data-duration="6.75" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
-      <div id="agent" data-composition-id="agent" data-composition-src="compositions/agent.html" data-start="58.0" data-duration="5.65" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
-      <div id="outro" data-composition-id="outro" data-composition-src="compositions/outro.html" data-start="63.65" data-duration="5.35" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="markets" data-composition-id="markets" data-composition-src="compositions/markets.html" data-start="58.0" data-duration="11.25" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="agent" data-composition-id="agent" data-composition-src="compositions/agent.html" data-start="69.25" data-duration="5.65" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="outro" data-composition-id="outro" data-composition-src="compositions/outro.html" data-start="74.9" data-duration="5.35" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
       <!-- Voice: one clip per line. -->
       <audio id="vo-1" class="clip" data-start="0.4" data-duration="4.288" data-track-index="2" data-volume="1" src="assets/vo/l1.wav"></audio>
       <audio id="vo-2" class="clip" data-start="4.99" data-duration="4.501" data-track-index="2" data-volume="1" src="assets/vo/l2.wav"></audio>
@@ -37,10 +38,12 @@
       <audio id="vo-9" class="clip" data-start="38.7" data-duration="4.587" data-track-index="2" data-volume="1" src="assets/vo/l9.wav"></audio>
       <audio id="vo-10" class="clip" data-start="43.59" data-duration="7.467" data-track-index="2" data-volume="1" src="assets/vo/l10.wav"></audio>
       <audio id="vo-11" class="clip" data-start="51.36" data-duration="6.464" data-track-index="2" data-volume="1" src="assets/vo/l11.wav"></audio>
-      <audio id="vo-12" class="clip" data-start="58.12" data-duration="5.376" data-track-index="2" data-volume="1" src="assets/vo/l12.wav"></audio>
-      <audio id="vo-13" class="clip" data-start="63.8" data-duration="2.965" data-track-index="2" data-volume="1" src="assets/vo/l13.wav"></audio>
+      <audio id="vo-m1" class="clip" data-start="58.15" data-duration="4.22" data-track-index="2" data-volume="1" src="assets/vo/m1.wav"></audio>
+      <audio id="vo-m2" class="clip" data-start="62.7" data-duration="5.97" data-track-index="2" data-volume="1" src="assets/vo/m2.wav"></audio>
+      <audio id="vo-12" class="clip" data-start="69.37" data-duration="5.376" data-track-index="2" data-volume="1" src="assets/vo/l12.wav"></audio>
+      <audio id="vo-13" class="clip" data-start="75.05" data-duration="2.965" data-track-index="2" data-volume="1" src="assets/vo/l13.wav"></audio>
       <!-- Music bed under the voice, fading under the end card. -->
-      <audio id="music" class="clip" data-start="0" data-duration="69.0" data-track-index="3" data-volume="0.13" data-fade-in="0.5" data-fade-out="2.2" src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
+      <audio id="music" class="clip" data-start="0" data-duration="80.25" data-track-index="3" data-volume="0.13" data-fade-in="0.5" data-fade-out="2.2" src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
       <!-- Effects, one lane, each just after its picture. -->
       <audio id="sfx-crash" class="clip" data-start="6.73" data-duration="0.183" data-track-index="4" data-volume="0.7" src="assets/sfx/impactSoft_medium_001.ogg"></audio>
       <audio id="sfx-mark" class="clip" data-start="18.83" data-duration="0.301" data-track-index="4" data-volume="0.5" src="assets/sfx/impactBell_heavy_004.ogg"></audio>
@@ -55,8 +58,12 @@
       <audio id="sfx-protect" class="clip" data-start="51.28" data-duration="0.6" data-track-index="4" data-volume="0.35" src="assets/sfx/card-slide-1.ogg"></audio>
       <audio id="sfx-trade" class="clip" data-start="53.53" data-duration="0.191" data-track-index="4" data-volume="0.45" src="assets/sfx/drop_002.ogg"></audio>
       <audio id="sfx-under" class="clip" data-start="55.68" data-duration="0.11" data-track-index="4" data-volume="0.45" src="assets/sfx/drop_001.ogg"></audio>
-      <audio id="sfx-limits" class="clip" data-start="61.13" data-duration="0.6" data-track-index="4" data-volume="0.35" src="assets/sfx/card-slide-1.ogg"></audio>
-      <audio id="sfx-end" class="clip" data-start="63.73" data-duration="0.301" data-track-index="4" data-volume="0.45" src="assets/sfx/impactBell_heavy_004.ogg"></audio>
+      <audio id="sfx-markets" class="clip" data-start="58.03" data-duration="0.6" data-track-index="4" data-volume="0.35" src="assets/sfx/card-slide-1.ogg"></audio>
+      <audio id="sfx-cover" class="clip" data-start="60.94" data-duration="0.11" data-track-index="4" data-volume="0.45" src="assets/sfx/drop_001.ogg"></audio>
+      <audio id="sfx-trip2" class="clip" data-start="64.89" data-duration="0.14" data-track-index="4" data-volume="0.75" src="assets/sfx/impactSoft_medium_003.ogg"></audio>
+      <audio id="sfx-paid" class="clip" data-start="67.08" data-duration="0.191" data-track-index="4" data-volume="0.45" src="assets/sfx/drop_002.ogg"></audio>
+      <audio id="sfx-limits" class="clip" data-start="72.38" data-duration="0.6" data-track-index="4" data-volume="0.35" src="assets/sfx/card-slide-1.ogg"></audio>
+      <audio id="sfx-end" class="clip" data-start="74.98" data-duration="0.301" data-track-index="4" data-volume="0.45" src="assets/sfx/impactBell_heavy_004.ogg"></audio>
     </div>
     <script>
       window.__timelines["main"] = gsap.timeline({ paused: true });

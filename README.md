@@ -11,7 +11,7 @@ Built for the [Reactive Omni Buildathon](https://dorahacks.io/hackathon/reactive
 
 **Live app:** [rift-bice.vercel.app](https://rift-bice.vercel.app) (testnet).
 
-**Videos:** [69 s pitch](brag-output/rift-pitch.mp4) (the Nomad story, how a trip works, the testnet run and the replay) · [25 s teaser](brag-output/brag.mp4).
+**Videos:** [80 s pitch](brag-output/rift-pitch.mp4) (the Nomad story, how a trip works, the testnet run, the replay, and a live trip of a trader-listed market) · [25 s teaser](brag-output/brag.mp4).
 
 **The use case it's built for: bridge-failure cover.** When a bridge is drained, the tokens it minted on other chains lose their backing and crash below the originals, and holders can't sell their way out. Rift watches the bridge's escrow and the bridged token's price, and when both break it fixes every covered payout in one transaction, seconds later, from a pool funded in advance. Replayed on the 2022 Nomad exploit, Rift trips while $71.2M of the $87.5M USDC escrow is still there ([replay](#replay-the-nomad-bridge-exploit-2022)).
 

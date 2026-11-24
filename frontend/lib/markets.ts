@@ -90,6 +90,12 @@ export type MarketRow = {
   hub?: { active: boolean; throttled: boolean; hasA: boolean; hasB: boolean; marksSent: number };
 };
 
+/** Lasna reads are optional extras: never let a slow Lasna RPC hold the market list back. */
+const LASNA_TIMEOUT_MS = 6000;
+function withTimeout<T>(p: Promise<T>, ms = LASNA_TIMEOUT_MS): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+}
+
 export const sideOf = (p: PoolRef): PoolSide => ({ chain: CHAIN_BY_ID[Number(p.chainId)] ?? "base", address: p.pool });
 
 async function readMarkets(): Promise<MarketRow[]> {
@@ -142,8 +148,7 @@ async function readMarkets(): Promise<MarketRow[]> {
   // The hub's view (subscribed? prices seen?) is a nice-to-have: Lasna being slow mustn't hide the list.
   const hubRows = await Promise.all(
     rows.map((r) =>
-      clients.lasna
-        .readContract({ ...hub, functionName: "marketOf", args: [BigInt(r.id)] })
+      withTimeout(clients.lasna.readContract({ ...hub, functionName: "marketOf", args: [BigInt(r.id)] }))
         .then((h) => ({ active: h.active, throttled: h.throttled, hasA: h.priceA > 0n, hasB: h.priceB > 0n, marksSent: Number(h.marksSent) }))
         .catch(() => undefined),
     ),
@@ -152,10 +157,12 @@ async function readMarkets(): Promise<MarketRow[]> {
     rows.map((r) =>
       r.cover?.status !== "approved"
         ? undefined
-        : Promise.all([
-            clients.lasna.readContract({ ...hub, functionName: "coverOf", args: [BigInt(r.id)] }),
-            clients.lasna.readContract({ ...hub, functionName: "outflowBps", args: [BigInt(r.id)] }),
-          ])
+        : withTimeout(
+            Promise.all([
+              clients.lasna.readContract({ ...hub, functionName: "coverOf", args: [BigInt(r.id)] }),
+              clients.lasna.readContract({ ...hub, functionName: "outflowBps", args: [BigInt(r.id)] }),
+            ]),
+          )
             .then(([h, out]) => ({
               armed: h.armed,
               tripped: h.tripped,

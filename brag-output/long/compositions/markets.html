@@ -1,0 +1,296 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(50% 50% at 80% 90%, rgba(255, 68, 51, 0.12), transparent 70%), #09090b;
+      color: #ece7dc;
+      font-family: "Inter", sans-serif;
+      overflow: hidden;
+    }
+    /* Beat 1 and 3: the live app, framed like the products scene. */
+    .k-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1440px;
+      height: 1100px;
+      transform-origin: 0 0;
+    }
+    .k-cam img {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .k-hl {
+      position: absolute;
+      border: 3px solid #ff4433;
+      background: rgba(255, 68, 51, 0.1);
+    }
+    /* market1.webp: card A (the listing) and card E (the cover panel). */
+    #k-hl-list {
+      left: 48px;
+      top: 173px;
+      width: 888px;
+      height: 329px;
+    }
+    #k-hl-cover {
+      left: 48px;
+      top: 522px;
+      width: 888px;
+      height: 316px;
+    }
+    /* market0.webp: the cover panel after the trip. */
+    #k-hl-paid {
+      left: 48px;
+      top: 600px;
+      width: 888px;
+      height: 316px;
+    }
+    .k-chip {
+      position: absolute;
+      left: 96px;
+      bottom: 80px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #ece7dc;
+      background: #111114;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .k-chip i {
+      width: 12px;
+      height: 12px;
+      background: #3fb67b;
+      display: inline-block;
+    }
+    #k-chip-paid i {
+      background: #ff4433;
+    }
+    /* Beat 2: the live trip, in the replay panel's language. */
+    #k-panel {
+      position: absolute;
+      left: 160px;
+      top: 150px;
+      width: 1600px;
+      height: 780px;
+      background: #111114;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 64px 80px;
+    }
+    .k-tick {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      border-color: #ff4433;
+      border-style: solid;
+    }
+    #k-t1 {
+      left: -2px;
+      top: -2px;
+      border-width: 4px 0 0 4px;
+    }
+    #k-t2 {
+      right: -2px;
+      bottom: -2px;
+      border-width: 0 4px 4px 0;
+    }
+    .k-kicker {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #a8a397;
+    }
+    .k-kicker b {
+      color: #ff4433;
+      font-weight: 400;
+    }
+    #k-row {
+      margin-top: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .k-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      color: #a8a397;
+      margin-bottom: 12px;
+    }
+    #k-vault {
+      font-family: "JetBrains Mono", monospace;
+      font-weight: 700;
+      font-size: 120px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    #k-clock {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 60px;
+      text-align: right;
+    }
+    #k-clock small {
+      display: block;
+      font-size: 28px;
+      color: #a8a397;
+      letter-spacing: 0.16em;
+      margin-bottom: 8px;
+    }
+    #k-cards {
+      margin-top: 44px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+    .k-card {
+      position: relative;
+      border: 2px solid rgba(236, 231, 220, 0.28);
+      padding: 28px 32px;
+      height: 236px;
+    }
+    .k-card h3 {
+      font-size: 44px;
+      font-weight: 900;
+      letter-spacing: -0.01em;
+    }
+    .k-card p {
+      margin-top: 8px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      color: #a8a397;
+    }
+    .k-state {
+      position: absolute;
+      left: 32px;
+      bottom: 26px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 28px;
+      letter-spacing: 0.14em;
+      color: #3fb67b;
+    }
+    .k-stamp {
+      position: absolute;
+      left: 26px;
+      bottom: 20px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #09090b;
+      background: #ff4433;
+      padding: 8px 18px;
+      white-space: nowrap;
+    }
+    #k-facts {
+      margin-top: 40px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 30px;
+      color: #a8a397;
+    }
+    #k-facts em {
+      font-style: normal;
+      color: #ece7dc;
+    }
+  </style>
+  <div id="root" data-composition-id="markets" data-width="1920" data-height="1080">
+    <div id="k-list" class="k-cam" data-layout-allow-overflow>
+      <img src="assets/screens/market1.webp" alt="Markets: a trader-listed market with cover on sale" />
+      <div id="k-hl-list" class="k-hl"></div>
+      <div id="k-hl-cover" class="k-hl"></div>
+    </div>
+    <div id="k-chip-list" class="k-chip"><i></i>The live app · Markets · listed by a trader</div>
+
+    <div id="k-panel">
+      <div id="k-t1" class="k-tick"></div>
+      <div id="k-t2" class="k-tick"></div>
+      <div class="k-kicker"><b>Live test /</b> one drain on Base Sepolia · 24 Nov 2026</div>
+      <div id="k-row">
+        <div>
+          <div class="k-label">MockVault · Base Sepolia</div>
+          <div id="k-vault">700K</div>
+        </div>
+        <div id="k-clock"><small>UTC</small><span id="k-time">09:29:39</span></div>
+      </div>
+      <div id="k-cards">
+        <div class="k-card">
+          <h3>RiftMarket</h3>
+          <p>Rift's own market · Unichain</p>
+          <div id="k-w1" class="k-state">■ WATCHING</div>
+          <div id="k-s1" class="k-stamp">TRIPPED · 09:30:27</div>
+        </div>
+        <div class="k-card">
+          <h3>Market #0</h3>
+          <p>listed by a trader · Unichain</p>
+          <div id="k-w2" class="k-state">■ WATCHING</div>
+          <div id="k-s2" class="k-stamp">TRIPPED · 09:30:27</div>
+        </div>
+      </div>
+      <div id="k-facts"><em>−74.87%</em> spread · <em>42.85%</em> vault outflow</div>
+    </div>
+
+    <div id="k-paid" class="k-cam" data-layout-allow-overflow>
+      <img src="assets/screens/market0.webp" alt="Market #0 after the trip: covered policies paid at 100%" />
+      <div id="k-hl-paid" class="k-hl"></div>
+    </div>
+    <div id="k-chip-paid" class="k-chip"><i></i>Market #0 · covered policies paid at 100%</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const frame = { x: 0, y: -200, scale: 1.3334 }; // the listing card and the cover panel both in frame
+    const paid = { x: 0, y: -330, scale: 1.3334 };
+
+    // Beat 1 — VO m1 at 0.15: "Now anyone can list a market on two pools, / and propose cover on a vault."
+    tl.fromTo("#k-list", { ...frame, y: -80, opacity: 0, filter: "blur(10px)" }, { ...frame, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "expo.out" }, 0);
+    tl.fromTo("#k-chip-list", { opacity: 0 }, { opacity: 1, duration: 0.18 }, 0.1);
+    tl.fromTo("#k-hl-list", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 0.75); // "list a market"
+    tl.to("#k-hl-list", { opacity: 0, duration: 0.15 }, 2.85);
+    tl.fromTo("#k-hl-cover", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 2.91); // "propose cover"
+    tl.to(["#k-list", "#k-chip-list"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power3.in" }, 4.4);
+
+    // Beat 2 — VO m2 at 4.70: "In a live test, / one drain on Base tripped two markets in the same second."
+    tl.fromTo("#k-panel", { opacity: 0, y: 30, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.35, ease: "expo.out" }, 4.55);
+    tl.set(["#k-s1", "#k-s2"], { opacity: 0 }, 0);
+    tl.set("#k-facts", { opacity: 0 }, 0);
+    // The drain: vault and clock run together (700K → 400K, 09:29:39 → 09:30:27).
+    const d = { k: 0 };
+    const pad = (n) => String(n).padStart(2, "0");
+    const t0 = 9 * 3600 + 29 * 60 + 39,
+      t1 = 9 * 3600 + 30 * 60 + 27;
+    tl.fromTo(
+      d,
+      { k: 0 },
+      {
+        k: 1,
+        duration: 1.0,
+        ease: "power1.in",
+        onUpdate: () => {
+          document.querySelector("#k-vault").textContent = Math.round(700 - 300 * d.k) + "K";
+          const t = Math.round(t0 + (t1 - t0) * d.k);
+          document.querySelector("#k-time").textContent = pad(Math.floor(t / 3600)) + ":" + pad(Math.floor((t % 3600) / 60)) + ":" + pad(t % 60);
+        },
+      },
+      5.85, // "one drain on Base"
+    );
+    // Both markets trip on "tripped", in the same frame.
+    tl.to(["#k-w1", "#k-w2"], { opacity: 0, duration: 0.08 }, 6.86);
+    tl.fromTo(["#k-s1", "#k-s2"], { opacity: 0, scale: 1.25, filter: "blur(6px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.22, ease: "expo.out" }, 6.86);
+    tl.to("#k-time", { color: "#ff4433", duration: 0.15 }, 6.86);
+    tl.to("#k-facts", { opacity: 1, duration: 0.25, ease: "power2.out" }, 6.9); // with the stamps
+    tl.to("#k-panel", { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power3.in" }, 8.9);
+
+    // Beat 3 — "Every policy paid in full." (≈ 9.08): the real page after the trip.
+    tl.fromTo("#k-paid", { ...paid, opacity: 0, filter: "blur(8px)" }, { ...paid, opacity: 1, filter: "blur(0px)", duration: 0.15, ease: "power4.out" }, 9.05);
+    tl.fromTo("#k-chip-paid", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 9.05);
+    tl.fromTo("#k-hl-paid", { opacity: 0 }, { opacity: 1, duration: 0.15 }, 9.5);
+    tl.to(["#k-paid", "#k-chip-paid"], { opacity: 0, duration: 0.18, ease: "power3.in" }, 11.0);
+    window.__timelines["markets"] = tl;
+  </script>
+</template>
